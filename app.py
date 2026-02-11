@@ -59,10 +59,13 @@ if check_auth():
         st.title("🛠️ 设计参数")
         st.caption("作者：观世不笑")
         filter_prompts = {
-            '原图风格 (Original)': "Maintain original lighting and color grading.",
-            '温馨暖调 (Warm)': "Apply warm, cozy, golden-hour lighting.",
-            '清冷高级 (Cool)': "Apply cool, modern, chic color grading.",
-            '极简主义 (Minimalist)': "Focus on simple, clean aesthetics."
+            '原图风格 (Original)': "Maintain the original lighting and color grading of the room.",
+            '温馨暖调 (Warm)': "Apply a warm, cozy, golden-hour lighting filter. Make the atmosphere inviting.",
+            '清冷高级 (Cool)': "Apply a cool, modern, chic color grading with bluish/neutral tones.",
+            '复古胶片 (Vintage)': "Apply a vintage film look, slightly desaturated with a nostalgic vibe.",
+            '明亮通透 (Bright)': "Maximize natural light, make the room look airy, bright, and spacious.",
+            '赛博朋克 (Cyberpunk)': "Apply dramatic neon lighting (pink/blue) for a cyberpunk aesthetic.",
+            '极简主义 (Minimalist)': "Clean up the visual noise, focus on soft, even lighting and simple aesthetics."
         }
         style_name = st.selectbox("选择装修滤镜", list(filter_prompts.keys()))
         resolution = st.select_slider("生成画质", options=["1K", "2K", "4K"], value="2K")
