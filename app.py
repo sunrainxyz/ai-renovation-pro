@@ -58,7 +58,7 @@ if check_auth():
         st.title("🛠️ 设计参数")
         st.caption("作者：观世不笑")
         filter_prompts = {
-            '原图风格 (Original)': "Maintain the original lighting and color grading of the room.",
+             '原图风格 (Original)': "Maintain the original lighting and color grading of the room.",
             '温馨暖调 (Warm)': "Apply a warm, cozy, golden-hour lighting filter. Make the atmosphere inviting.",
             '清冷高级 (Cool)': "Apply a cool, modern, chic color grading with bluish/neutral tones.",
             '复古胶片 (Vintage)': "Apply a vintage film look, slightly desaturated with a nostalgic vibe.",
@@ -69,8 +69,8 @@ if check_auth():
         style_name = st.selectbox("选择装修滤镜", list(filter_prompts.keys()))
         resolution = st.select_slider("生成画质", options=["1K", "2K", "4K"], value="2K")
         
-        # --- 新增：自动识图功能开关 ---
-        auto_guide = st.checkbox("🔍 开启 AI 自动识图导购", value=True, help="AI 将先分析您的房间风格并提供匹配建议")
+        # --- 新增：主材清单开关 ---
+        show_material_list = st.toggle("📋 自动生成主材清单", value=True, help="AI 将同步列出装修所需的核心材料建议")
 
     col1, col2 = st.columns([1, 1])
 
@@ -81,7 +81,7 @@ if check_auth():
         user_prompt = st.text_area("3. 补充描述", placeholder="例如：保留地板颜色，更换现代简约风沙发...")
 
     with col2:
-        st.subheader("✨ 渲染预览")
+        st.subheader("✨ 渲染预览与清单")
         if st.button("开始 Pro 级高保真渲染", type="primary", use_container_width=True):
             if not room_file:
                 st.warning("请先上传底图房间照片。")
@@ -89,26 +89,30 @@ if check_auth():
                 try:
                     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
                     
-                    # --- 修复 404 逻辑：双重保障模型初始化 ---
-                    try:
-                        model = genai.GenerativeModel('gemini-1.5-pro')
-                    except:
-                        model = genai.GenerativeModel('gemini-1.5-flash')
+                    # --- 修复 404：移除 'models/' 前缀，直接使用名称 ---
+                    model = genai.GenerativeModel('gemini-1.5-pro')
 
-                    with st.spinner("AI 正在深度解析并渲染中..."):
+                    with st.spinner("AI 正在深度解析并生成设计方案..."):
                         input_data = []
                         base_img = Image.open(room_file)
                         input_data.append(base_img)
                         for f_file in furniture_files:
                             input_data.append(Image.open(f_file))
                         
-                        # --- 核心 Prompt 与自动导购融合 ---
-                        guide_instruction = "First, analyze the base room style. Then, " if auto_guide else ""
+                        # --- 核心：集成主材清单的指令 ---
+                        list_instruction = ""
+                        if show_material_list:
+                            list_instruction = """
+                            Additionally, please provide a 'Main Material List' in a Markdown table format. 
+                            Include columns: Item Name, Recommended Material, and Selection Reason.
+                            """
+
                         core_prompt = f"""
-                        {guide_instruction}[STRICT INSTRUCTION: PRESERVE ORIGINAL ROOM LAYOUT]
+                        [STRICT INSTRUCTION: PRESERVE ORIGINAL ROOM LAYOUT]
                         Base Image: The first image. Task: Photorealistically integrate furniture.
                         STYLE: {filter_prompts[style_name]}
                         User request: {user_prompt if user_prompt else "Natural integration."}
+                        {list_instruction}
                         """
                         input_data.append(core_prompt)
                         
@@ -122,8 +126,7 @@ if check_auth():
                                     st.download_button("📥 下载设计图", part.inline_data.data, "result.png", "image/png")
                                     has_image = True
                                 elif hasattr(part, 'text') and part.text:
-                                    # 自动导购说明展示
-                                    st.info("📄 AI 设计师点评：")
+                                    # 如果包含了主材清单，文字展示会很漂亮
                                     st.markdown(part.text)
                             
                             if has_image:
@@ -133,10 +136,14 @@ if check_auth():
                                 st.success(f"渲染成功！已为您的客户服务 {stats['codes'][user]} 次。")
                                 st.balloons()
                             else:
-                                st.error("AI 未能输出图片，请检查 API 权限或重试。")
+                                st.error("AI 未能输出预览图，可能触犯安全过滤。")
                 except Exception as e:
-                    st.error(f"渲染错误：{str(e)}")
+                    # 针对 404 的特定提示
+                    if "404" in str(e):
+                        st.error("⚠️ 模型连接失败：请检查 API Key 权限或模型名称。")
+                    else:
+                        st.error(f"渲染错误：{str(e)}")
 
 # --- 版权底栏 ---
 st.markdown("---")
-st.markdown("<p style='text-align: center; color: gray;'>观世不笑 · 2026 商业版 | 罗莱软装独家技术支持</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: gray;'>观世不笑 · 2026 商业版 | 罗莱软装主材清单系统</p>", unsafe_allow_html=True)
