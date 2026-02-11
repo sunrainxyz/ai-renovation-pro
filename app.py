@@ -12,7 +12,7 @@ def check_auth():
         st.title("🏠 AI 装修模拟器 · 授权登录")
         access_code = st.text_input("请输入您的专属授权码：", type="password")
         if st.button("激活"):
-            if access_code in st.secrets["ACCESS_CODES"]:
+            if access_code in st.secrets["gsbx2025"]:
                 st.session_state["authenticated"] = True
                 st.rerun()
             else:
