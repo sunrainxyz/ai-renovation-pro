@@ -4,14 +4,14 @@ from PIL import Image
 import io
 
 # --- 1. 商业版页面配置 ---
-st.set_page_config(page_title="AI装修模拟器-罗莱软装 Pro", page_icon="??", layout="wide")
+st.set_page_config(page_title="AI装修模拟器-罗莱软装 Pro", page_icon="🏠", layout="wide")
 
 # --- 2. 授权门禁系统 ---
 def check_auth():
     if "authenticated" not in st.session_state:
         st.session_state["authenticated"] = False
     if not st.session_state["authenticated"]:
-        st.title("?? AI 装修模拟器 · 罗莱软装专业版")
+        st.title("🏠 AI 装修模拟器 · 罗莱软装专业版")
         st.info("本系统由【观世不笑】开发，仅供商业授权客户使用。")
         # 确保此处从 Secrets 读取 ACCESS_CODES
         access_code = st.text_input("请输入您的专属授权码：", type="password")
@@ -28,7 +28,7 @@ def check_auth():
 if check_auth():
     # 侧边栏：风格与参数 (严格复刻 geminiService.ts 逻辑)
     with st.sidebar:
-        st.title("??? 设计参数")
+        st.title("🛠️ 设计参数")
         st.caption("作者：观世不笑")
         
         # 风格滤镜映射表 (英文指令确保 AI 理解更精准)
@@ -45,19 +45,19 @@ if check_auth():
         style_name = st.selectbox("选择装修滤镜", list(filter_prompts.keys()))
         resolution = st.select_slider("生成画质 (Resolution)", options=["1K", "2K", "4K"], value="2K")
         st.divider()
-        st.info("?? 建议：上传清晰、无遮挡的底图房间照片效果最佳。")
+        st.info("💡 建议：上传清晰、无遮挡的底图房间照片效果最佳。")
 
     # 主界面布局
     col1, col2 = st.columns([1, 1])
 
     with col1:
-        st.subheader("??? 素材上传区")
+        st.subheader("🖼️ 素材上传区")
         room_file = st.file_uploader("1. 上传【底图房间】(Base Room)", type=['png', 'jpg', 'jpeg'])
         furniture_files = st.file_uploader("2. 上传【家具/软装】素材 (多选)", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True)
         user_prompt = st.text_area("3. 补充描述 (可选)", placeholder="例如：将这把椅子放在窗户右侧...")
 
     with col2:
-        st.subheader("? 装修预览区")
+        st.subheader("✨ 装修预览区")
         if st.button("开始 Pro 级高保真渲染", type="primary", use_container_width=True):
             if not room_file:
                 st.warning("请先上传底图房间照片。")
@@ -111,11 +111,11 @@ if check_auth():
                             for part in response.candidates[0].content.parts:
                                 # 处理生成的图片
                                 if hasattr(part, 'inline_data') and part.inline_data:
-                                    st.success("?? 最终装修效果图已生成！")
+                                    st.success("🎉 最终装修效果图已生成！")
                                     st.image(part.inline_data.data, caption=f"渲染画质: {resolution}", use_container_width=True)
                                     # 提供下载按钮
                                     st.download_button(
-                                        label="?? 下载高清设计图",
+                                        label="📥 下载高清设计图",
                                         data=part.inline_data.data,
                                         file_name="renovation_design.png",
                                         mime="image/png"
@@ -124,7 +124,7 @@ if check_auth():
                                 
                                 # 处理生成的文字说明
                                 elif hasattr(part, 'text') and part.text:
-                                    st.info("?? AI 设计建议：")
+                                    st.info("📄 AI 设计建议：")
                                     st.markdown(part.text)
                                     has_output = True
                             
