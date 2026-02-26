@@ -11,7 +11,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. 深度精修版 UI CSS (汉化精修与布局固定) ---
+# --- 2. 深度精修版 UI CSS (汉化、避坑与布局固定) ---
 st.markdown("""
     <style>
     /* 1. 彻底移除原英文标签，防止重影 */
@@ -51,7 +51,7 @@ st.markdown("""
         margin-top: 5px;
     }
 
-    /* 5. 强制锁定侧边栏文字颜色 */
+    /* 5. 强制锁定侧边栏文字颜色 (解决截图中的文字隐身问题) */
     [data-testid="stSidebar"] {
         background-color: #FFFFFF !important;
     }
@@ -68,7 +68,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. 流量监控逻辑 (全局共享) ---
+# --- 3. 流量监控逻辑 (全局缓存) ---
 @st.cache_resource
 def get_traffic_stats():
     return {"total": 0, "codes": {}}
@@ -101,13 +101,13 @@ def check_auth():
 
 # --- 5. 核心逻辑入口 ---
 if check_auth():
-    # 管理员监控
+    # 管理员监控面板
     if st.session_state["current_user"] == "ADMIN":
         with st.sidebar:
             st.header("📈 后台流量监控")
             st.metric("累计生成次数", stats["total"])
             st.table(stats["codes"])
-            if st.button("重置统计"):
+            if st.button("重置统计记录"):
                 stats["total"] = 0; stats["codes"] = {}; st.rerun()
             st.divider()
 
@@ -129,51 +129,63 @@ if check_auth():
 
     with col1:
         st.subheader("🖼️ 素材上传")
-        # --- 更新：增加数字序列标签 ---
+        # 1. 房间底图 (带数字序列)
         room_img = st.file_uploader("1. 房间底图", type=['png', 'jpg', 'jpeg'])
+        # 2. 家具素材 (带数字序列)
         items_img = st.file_uploader("2. 家具素材 (多选)", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True)
-        # --- 更新：描述框增加序列与新默认提示词 ---
+        # 3. 补充描述 (带数字序列与定制占位符)
         note = st.text_area("3. 补充描述", placeholder="例如：将上传的窗帘替换掉原来的窗帘")
 
     with col2:
         st.subheader("✨ 渲染预览")
         if st.button("开始 Pro 级高保真渲染", type="primary", use_container_width=True):
             if not room_img:
-                st.warning("请上传房间底图。")
+                st.warning("请上传房间底图，AI需要底图作为空间参考。")
             else:
                 try:
+                    # AI API 配置
                     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
                     
+                    # 动态探测可用模型 (优先使用您列表中的 Pro 系列)
                     target_models = ['models/gemini-3-pro-image-preview', 'models/gemini-2.5-pro', 'models/gemini-2.0-flash']
                     available = [m.name for m in genai.list_models()]
                     selected = next((m for m in target_models if m in available), 'models/gemini-1.5-pro')
+                    
                     model = genai.GenerativeModel(selected)
 
-                    with st.spinner(f"正在驱动 {selected.split('/')[-1]} 渲染..."):
+                    with st.spinner(f"正在驱动 {selected.split('/')[-1]} 进行空间渲染..."):
+                        # 构建多模态输入载荷
                         payload = [Image.open(room_img)]
-                        for f in items_img: payload.append(Image.open(f))
+                        for f in items_img:
+                            payload.append(Image.open(f))
                         
-                        p_text = f"Style: {style_list[style_name]}. {note}. "
+                        p_text = f"STYLE: {style_list[style_name]}. {note}. "
                         if show_list: p_text += "Include a material list table."
                         payload.append(p_text)
                         
+                        # 执行 AI 生成
                         response = model.generate_content(payload)
                         
+                        # 渲染输出结果
                         if response.candidates:
                             for part in response.candidates[0].content.parts:
                                 if hasattr(part, 'inline_data') and part.inline_data:
-                                    st.image(part.inline_data.data, use_container_width=True)
+                                    st.image(part.inline_data.data, caption=f"渲染完成 ({res})", use_container_width=True)
                                     st.download_button("📥 下载设计图", part.inline_data.data, "design.png", "image/png")
                                 elif hasattr(part, 'text') and part.text:
                                     st.markdown(part.text)
                             
+                            # 业务计数逻辑
                             stats["total"] += 1
                             usr = st.session_state["current_user"]
                             stats["codes"][usr] = stats["codes"].get(usr, 0) + 1
-                            st.success("设计渲染完成！")
+                            st.success("设计渲染成功完成！")
                             st.balloons()
+                            
+                # --- 语法修复点：确保 try 块拥有匹配的 except 块 ---
                 except Exception as e:
                     st.error(f"渲染中发生错误：{str(e)}")
 
+# --- 版权底栏 ---
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: gray;'>观世不笑 · 2026 商业授权版 | 罗莱软装官方技术支持</p>", unsafe_allow_html=True)
