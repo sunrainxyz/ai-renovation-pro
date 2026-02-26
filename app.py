@@ -18,9 +18,9 @@ st.markdown("""
     [data-testid="stFileUploaderDropzoneInstructions"] > div > span {
         display: none !important;
     }
-    /* 2. 汉化拖拽区域提示 */
+    /* 2. 汉化拖拽区域提示词 */
     [data-testid="stFileUploaderDropzoneInstructions"] > div::before {
-        content: "将图片拖拽至此处";
+        content: "将房间照片或家具图片拖拽至此处";
         font-size: 16px;
         font-weight: bold;
         color: #31333F;
@@ -125,15 +125,14 @@ if check_auth():
         res = st.select_slider("画质", options=["1K", "2K", "4K"], value="2K")
         show_list = st.toggle("📋 生成主材清单", value=True)
 
+    # 主操作区布局
     col1, col2 = st.columns([1, 1])
 
     with col1:
         st.subheader("🖼️ 素材上传")
-        # 1. 房间底图 (带数字序列)
+        # --- 更新：主要功能区增加数字序列 ---
         room_img = st.file_uploader("1. 房间底图", type=['png', 'jpg', 'jpeg'])
-        # 2. 家具素材 (带数字序列)
         items_img = st.file_uploader("2. 家具素材 (多选)", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True)
-        # 3. 补充描述 (带数字序列与定制占位符)
         note = st.text_area("3. 补充描述", placeholder="例如：将上传的窗帘替换掉原来的窗帘")
 
     with col2:
@@ -146,15 +145,19 @@ if check_auth():
                     # AI API 配置
                     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
                     
-                    # 动态探测可用模型 (优先使用您列表中的 Pro 系列)
-                    target_models = ['models/gemini-3-pro-image-preview', 'models/gemini-2.5-pro', 'models/gemini-2.0-flash']
+                    # 动态探测可用模型
+                    target_models = [
+                        'models/gemini-3-pro-image-preview', 
+                        'models/gemini-2.5-pro', 
+                        'models/gemini-2.0-flash'
+                    ]
                     available = [m.name for m in genai.list_models()]
                     selected = next((m for m in target_models if m in available), 'models/gemini-1.5-pro')
                     
                     model = genai.GenerativeModel(selected)
 
                     with st.spinner(f"正在驱动 {selected.split('/')[-1]} 进行空间渲染..."):
-                        # 构建多模态输入载荷
+                        # 构建多模态载荷
                         payload = [Image.open(room_img)]
                         for f in items_img:
                             payload.append(Image.open(f))
@@ -163,7 +166,7 @@ if check_auth():
                         if show_list: p_text += "Include a material list table."
                         payload.append(p_text)
                         
-                        # 执行 AI 生成
+                        # 执行生成
                         response = model.generate_content(payload)
                         
                         # 渲染输出结果
@@ -182,7 +185,7 @@ if check_auth():
                             st.success("设计渲染成功完成！")
                             st.balloons()
                             
-                # --- 语法修复点：确保 try 块拥有匹配的 except 块 ---
+                # --- 语法修复：确保 try 块拥有匹配的 except 块 ---
                 except Exception as e:
                     st.error(f"渲染中发生错误：{str(e)}")
 
