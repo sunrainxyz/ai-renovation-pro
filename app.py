@@ -20,7 +20,7 @@ st.markdown("""
     }
     /* 2. 汉化拖拽区域文字提示 */
     [data-testid="stFileUploaderDropzoneInstructions"] > div::before {
-        content: "将房间照片或家具图片拖拽至此处";
+        content: "将图片拖拽至此处";
         font-size: 16px;
         font-weight: bold;
         color: #31333F;
