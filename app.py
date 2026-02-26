@@ -11,14 +11,14 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. 深度修复版 UI CSS (解决重影与颜色不可见问题) ---
+# --- 2. 深度精修版 UI CSS (汉化精修与布局固定) ---
 st.markdown("""
     <style>
-    /* 彻底移除原英文标签，防止重影 */
+    /* 1. 彻底移除原英文标签，防止重影 */
     [data-testid="stFileUploaderDropzoneInstructions"] > div > span {
         display: none !important;
     }
-    /* 注入中文提示语 */
+    /* 2. 汉化拖拽区域提示 */
     [data-testid="stFileUploaderDropzoneInstructions"] > div::before {
         content: "将房间照片或家具图片拖拽至此处";
         font-size: 16px;
@@ -28,18 +28,18 @@ st.markdown("""
         margin-bottom: 10px;
     }
     
-    /* 汉化上传按钮 */
+    /* 3. 汉化上传按钮：修改为“选择图片” */
     [data-testid="stFileUploader"] button {
         font-size: 0px !important;
     }
     [data-testid="stFileUploader"] button::after {
-        content: "从手机相册选择";
+        content: "选择图片";
         font-size: 14px !important;
         visibility: visible;
         display: block;
     }
     
-    /* 汉化底部格式提示 */
+    /* 4. 汉化底部格式提示 */
     [data-testid="stFileUploaderDropzoneInstructions"] div small {
         display: none !important;
     }
@@ -51,7 +51,7 @@ st.markdown("""
         margin-top: 5px;
     }
 
-    /* 强制修复侧边栏文字颜色（解决白底白字看不见的问题） */
+    /* 5. 强制锁定侧边栏文字颜色 */
     [data-testid="stSidebar"] {
         background-color: #FFFFFF !important;
     }
@@ -62,7 +62,7 @@ st.markdown("""
         color: #31333F !important;
     }
 
-    /* 隐藏官方冗余元素 */
+    /* 6. 隐藏官方冗余元素 */
     footer {visibility: hidden;}
     #MainMenu {visibility: hidden;}
     </style>
@@ -82,7 +82,7 @@ def check_auth():
     
     if not st.session_state["authenticated"]:
         st.title("🏠 AI 装修模拟器 · 罗莱软装专业版")
-        st.info("本系统由【观世不笑】开发，请输入专属授权码激活。")
+        st.info("本系统已开启商业授权保护，请输入专属授权码激活。")
         
         col_l, col_m, col_r = st.columns([1, 2, 1])
         with col_m:
@@ -95,7 +95,7 @@ def check_auth():
                     st.session_state["current_user"] = access_code
                     st.rerun()
                 else:
-                    st.error("授权码无效，请联系博主获取。")
+                    st.error("授权码无效。")
         return False
     return True
 
@@ -129,12 +129,51 @@ if check_auth():
 
     with col1:
         st.subheader("🖼️ 素材上传")
+        # --- 更新：增加数字序列标签 ---
         room_img = st.file_uploader("1. 房间底图", type=['png', 'jpg', 'jpeg'])
         items_img = st.file_uploader("2. 家具素材 (多选)", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True)
-        note = st.text_area("3. 补充描述", placeholder="例如：换成奶咖色墙面...")
+        # --- 更新：描述框增加序列与新默认提示词 ---
+        note = st.text_area("3. 补充描述", placeholder="例如：将上传的窗帘替换掉原来的窗帘")
 
     with col2:
         st.subheader("✨ 渲染预览")
         if st.button("开始 Pro 级高保真渲染", type="primary", use_container_width=True):
             if not room_img:
-                st
+                st.warning("请上传房间底图。")
+            else:
+                try:
+                    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+                    
+                    target_models = ['models/gemini-3-pro-image-preview', 'models/gemini-2.5-pro', 'models/gemini-2.0-flash']
+                    available = [m.name for m in genai.list_models()]
+                    selected = next((m for m in target_models if m in available), 'models/gemini-1.5-pro')
+                    model = genai.GenerativeModel(selected)
+
+                    with st.spinner(f"正在驱动 {selected.split('/')[-1]} 渲染..."):
+                        payload = [Image.open(room_img)]
+                        for f in items_img: payload.append(Image.open(f))
+                        
+                        p_text = f"Style: {style_list[style_name]}. {note}. "
+                        if show_list: p_text += "Include a material list table."
+                        payload.append(p_text)
+                        
+                        response = model.generate_content(payload)
+                        
+                        if response.candidates:
+                            for part in response.candidates[0].content.parts:
+                                if hasattr(part, 'inline_data') and part.inline_data:
+                                    st.image(part.inline_data.data, use_container_width=True)
+                                    st.download_button("📥 下载设计图", part.inline_data.data, "design.png", "image/png")
+                                elif hasattr(part, 'text') and part.text:
+                                    st.markdown(part.text)
+                            
+                            stats["total"] += 1
+                            usr = st.session_state["current_user"]
+                            stats["codes"][usr] = stats["codes"].get(usr, 0) + 1
+                            st.success("设计渲染完成！")
+                            st.balloons()
+                except Exception as e:
+                    st.error(f"渲染中发生错误：{str(e)}")
+
+st.markdown("---")
+st.markdown("<p style='text-align: center; color: gray;'>观世不笑 · 2026 商业授权版 | 罗莱软装官方技术支持</p>", unsafe_allow_html=True)
