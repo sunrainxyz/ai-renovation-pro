@@ -127,7 +127,7 @@ if check_auth():
             '复古胶片 (Vintage)': "Apply nostalgic film vibe.",
             '极简主义 (Minimalist)': "Focus on clean lines."
         }
-        style_name = st.selectbox("选择设计风格", list(style_list.keys()))
+        style_name = st.selectbox("4.选择设计风格", list(style_list.keys()))
         res = st.select_slider("选择生成画质", options=["1K", "2K", "4K"], value="2K")
         show_list = st.toggle("📋 同步生成主材清单", value=True)
 
