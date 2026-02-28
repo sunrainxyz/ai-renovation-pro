@@ -3,7 +3,7 @@ import google.generativeai as genai
 from PIL import Image
 import io
 
-# --- 1. 商业版页面配置 ---
+# --- 1. 页面配置 ---
 st.set_page_config(
     page_title="AI装修模拟器-罗莱软装 Pro", 
     page_icon="🏠", 
@@ -11,55 +11,68 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. 深度精修 UI CSS (汉化、避坑、移除锚点) ---
+# --- 2. 深度 UI 精修 (汉化按钮、移除锚点、解决重影) ---
 st.markdown("""
     <style>
     /* 彻底移除原英文标签，防止重影 */
     [data-testid="stFileUploaderDropzoneInstructions"] > div > span {
         display: none !important;
     }
-    /* 注入中文提示语 */
+    /* 汉化并精修拖拽区域提示语 */
     [data-testid="stFileUploaderDropzoneInstructions"] > div::before {
-        content: "将图片拖拽至此处或点击“选择图片”按钮";
+        content: "将图片拖拽至此处或点击下方按钮";
         font-size: 16px;
         font-weight: bold;
         color: #31333F;
         display: block;
         margin-bottom: 10px;
     }
-    /* 汉化按钮 */
-    [data-testid="stFileUploader"] button { font-size: 0px !important; }
+    
+    /* 汉化上传按钮：修改为“选择图片” */
+    [data-testid="stFileUploader"] button {
+        font-size: 0px !important;
+    }
     [data-testid="stFileUploader"] button::after {
         content: "选择图片";
         font-size: 14px !important;
         visibility: visible;
         display: block;
     }
-    /* 隐藏标题旁的锚点链接图标 */
-    .stApp a.element-container:hover { display: none !important; }
-    /* 侧边栏颜色修正 */
+    
+    /* 全局隐藏标题旁的锚点链接图标 (解决 image_d00257 问题) */
+    .stApp a.element-container:hover {
+        display: none !important;
+    }
+    
+    /* 侧边栏文字颜色修正 */
     [data-testid="stSidebar"] [data-testid="stText"], 
     [data-testid="stSidebar"] label, 
-    [data-testid="stSidebar"] p { color: #31333F !important; }
+    [data-testid="stSidebar"] p {
+        color: #31333F !important;
+    }
+
     footer {visibility: hidden;}
+    #MainMenu {visibility: hidden;}
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. 统计逻辑 (全局共享) ---
+# --- 3. 统计逻辑 ---
 @st.cache_resource
 def get_traffic_stats():
     return {"total": 0, "codes": {}}
 
 stats = get_traffic_stats()
 
-# --- 4. 授权门禁 ---
+# --- 4. 授权系统 ---
 def check_auth():
     if "authenticated" not in st.session_state:
         st.session_state["authenticated"] = False
     
     if not st.session_state["authenticated"]:
+        # 禁用锚点 anchor=False
         st.title("🏠 AI 装修模拟器 · 罗莱软装专业版", anchor=False)
         st.info("本系统已开启商业授权保护，请输入专属授权码激活。")
+        
         col_l, col_m, col_r = st.columns([1, 2, 1])
         with col_m:
             access_code = st.text_input("请输入授权码：", type="password")
@@ -74,7 +87,7 @@ def check_auth():
         return False
     return True
 
-# --- 5. 主程序逻辑 ---
+# --- 5. 主程序 ---
 if check_auth():
     with st.sidebar:
         st.title("🛠️ 设计参数", anchor=False)
@@ -85,17 +98,20 @@ if check_auth():
         show_list = st.toggle("📋 同步生成主材清单", value=True)
 
     col1, col2 = st.columns([1, 1])
+
     with col1:
         st.subheader("🖼️ 素材上传", anchor=False)
+        # --- 修改点：数字序列标签 ---
         room_img = st.file_uploader("1.房间底图", type=['png', 'jpg', 'jpeg'])
         items_img = st.file_uploader("2.家具素材 (多选)", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True)
+        # --- 修改点：数字序列与新占位符 ---
         note = st.text_area("3.补充描述", placeholder="例如：将上传的窗帘替换掉原来的窗帘")
 
     with col2:
         st.subheader("✨ 渲染预览", anchor=False)
         if st.button("开始 Pro 级高保真渲染", type="primary", use_container_width=True):
             if not room_img:
-                st.warning("请先上传1.房间底图。")
+                st.warning("请上传1号房间底图。")
             else:
                 try:
                     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
@@ -117,8 +133,10 @@ if check_auth():
                             stats["codes"][usr] = stats["codes"].get(usr, 0) + 1
                             st.success("设计完成！")
                             st.balloons()
+                
+                # --- 核心语法修复点：确保 try 块有匹配的 except ---
                 except Exception as e:
                     st.error(f"渲染中发生错误：{str(e)}")
 
 st.markdown("---")
-st.markdown("<p style='text-align: center; color: gray;'>观世不笑 · 2026 商业授权版 | 罗莱软装技术支持</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: gray;'>观世不笑 · 2026 商业授权版 | 罗莱软装官方技术支持</p>", unsafe_allow_html=True)
