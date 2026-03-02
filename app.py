@@ -88,11 +88,7 @@ def get_closest_aspect_ratio(image_file):
         ratio = w / h
         
         supported_ratios = {
-            "1:1": 1.0,
-            "4:3": 4/3,
-            "3:4": 3/4,
-            "16:9": 16/9,
-            "9:16": 9/16
+            "1:1": 1.0, "4:3": 4/3, "3:4": 3/4, "16:9": 16/9, "9:16": 9/16
         }
         closest_ratio_key = min(supported_ratios.items(), key=lambda x: abs(x[1] - ratio))[0]
         return closest_ratio_key
@@ -114,7 +110,6 @@ if check_auth():
         st.title("🛠️ 渲染参数 (Imagen 4.0)", anchor=False)
         st.caption("视觉引擎：Google Imagen 4 | 技术支持：观世不笑")
         
-        # --- 核心修改：新增“保持原图”并置于首位作为默认值 ---
         style_list = {
             '✨ 保持原图 (Original)': "Maintain the original lighting, color palette, and architectural style of the base image exactly.",
             '温馨暖调 (Warm)': "Cozy, warm, soft lighting, inviting atmosphere, wood or creamy tones.",
@@ -125,15 +120,14 @@ if check_auth():
         style_name = st.selectbox("4.选择生图风格滤镜", list(style_list.keys()))
         
         aspect_ratio_map = {
-            "✨ 智能匹配原图比例": "auto",
-            "16:9 (标准横向)": "16:9",
-            "4:3 (中画幅横向)": "4:3",
-            "1:1 (正方形)": "1:1",
-            "3:4 (中画幅竖向)": "3:4",
-            "9:16 (手机竖屏)": "9:16"
+            "✨ 智能匹配原图比例": "auto", "16:9 (标准横向)": "16:9", "4:3 (中画幅横向)": "4:3",
+            "1:1 (正方形)": "1:1", "3:4 (中画幅竖向)": "3:4", "9:16 (手机竖屏)": "9:16"
         }
         aspect_ratio = st.selectbox("5.输出画幅", list(aspect_ratio_map.keys()))
+        
         st.divider()
+        # --- 新增：垫图控制开关 ---
+        enable_ref = st.toggle("🎯 启用精准垫图控制 (严格遵循素材形状)", value=True, help="开启后，将以您上传的第一张家具素材作为底层结构参考，防止 AI 随意改变款式。")
 
     col1, col2 = st.columns([1, 1])
 
@@ -156,11 +150,11 @@ if check_auth():
         )
 
     with col2:
-        st.subheader("✨ AI装修模拟", anchor=False)
+        st.subheader("✨ AI模拟装修效果", anchor=False)
         
         if st.button("🚀 启动 Imagen 4.0 超写实渲染", type="primary", use_container_width=True):
             if not room_img:
-                st.warning("请先上传 1.房间底图。")
+                st.warning("请先上传 1. 房间底图。")
             else:
                 st.session_state["result_image"] = None
                 
@@ -173,7 +167,7 @@ if check_auth():
                         final_ratio = get_closest_aspect_ratio(room_img)
                         st.toast(f"📐 自动匹配生图比例为：{final_ratio}")
                     
-                    with st.spinner("1/2: Gemini 视觉解析中 (已开启提速压缩)..."):
+                    with st.spinner("1/2: Gemini 视觉解析中 (提取核心特征)..."):
                         available_names = [m.name for m in genai.list_models()]
                         vision_models = ['models/gemini-2.5-pro', 'models/gemini-3.1-pro-preview', 'models/gemini-1.5-pro']
                         selected_vision = next((m for m in vision_models if m in available_names), available_names[0])
@@ -205,12 +199,24 @@ if check_auth():
                         vision_response = vision_model.generate_content(payload)
                         generated_prompt = vision_response.text.strip()
 
-                    with st.spinner(f"2/2: Imagen 4.0 正在以 {final_ratio} 比例进行逼真光影渲染..."):
+                    with st.spinner(f"2/2: Imagen 4.0 正在执行逼真渲染 (垫图网关已就绪)..."):
                         url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key={api_key}"
+                        
+                        # 构建标准 REST 载荷
                         payload_data = {
                             "instances": [{"prompt": generated_prompt}],
                             "parameters": {"sampleCount": 1, "aspectRatio": final_ratio}
                         }
+                        
+                        # --- 核心逻辑：注入垫图数据 ---
+                        if enable_ref and items_img:
+                            ref_img_optimized = optimize_image_for_api(items_img[0], max_size=(1024, 1024))
+                            if ref_img_optimized:
+                                buffered = io.BytesIO()
+                                ref_img_optimized.save(buffered, format="PNG")
+                                ref_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                                # 将首张素材图作为 Image-to-Image 的参照锚点
+                                payload_data["instances"][0]["image"] = {"bytesBase64Encoded": ref_b64}
                         
                         resp = requests.post(url, json=payload_data)
                         
