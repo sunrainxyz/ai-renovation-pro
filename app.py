@@ -61,6 +61,19 @@ def check_auth():
         return False
     return True
 
+# --- 核心新增：安全图片预处理函数 ---
+def optimize_image_for_api(uploaded_file, max_size=(1024, 1024)):
+    """将上传的图片转化为 RGB 模式，并等比压缩到安全尺寸，防止 API 卡死"""
+    try:
+        img = Image.open(uploaded_file)
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
+        img.thumbnail(max_size, Image.Resampling.LANCZOS)
+        return img
+    except Exception as e:
+        st.error(f"图片处理失败，请更换格式：{str(e)}")
+        return None
+
 # --- 5. 核心逻辑入口 ---
 if check_auth():
     if st.session_state["current_user"] == "ADMIN":
@@ -101,7 +114,7 @@ if check_auth():
                 with preview_cols[idx % 4]:
                     st.image(f, use_container_width=True)
                     
-        note = st.text_area("3. 补充描述", placeholder="将上传的窗帘替换房间里的窗帘。")
+        note = st.text_area("3. 补充描述", placeholder="例如：保留原有木地板，将上传的灰色沙发放在窗边。")
 
     with col2:
         st.subheader("✨ 旗舰视觉生成", anchor=False)
@@ -113,43 +126,47 @@ if check_auth():
                     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
                     
                     # =========================================================
-                    # STEP 1: Gemini 2.5 Pro 提取视觉特征并生成 Prompt
+                    # STEP 1: Gemini 视觉解析 (带防卡死图片压缩)
                     # =========================================================
-                    with st.spinner("1/2: Gemini 2.5 Pro 正在进行空间视觉解析..."):
+                    with st.spinner("1/2: Gemini 视觉解析中 (已开启提速压缩)..."):
                         available_names = [m.name for m in genai.list_models()]
-                        vision_models = ['models/gemini-3.1-pro-preview', 'models/gemini-2.5-pro', 'models/gemini-1.5-pro']
+                        vision_models = ['models/gemini-2.5-pro', 'models/gemini-3.1-pro-preview', 'models/gemini-1.5-pro']
                         selected_vision = next((m for m in vision_models if m in available_names), available_names[0])
                         
                         vision_model = genai.GenerativeModel(selected_vision)
-                        payload = [Image.open(room_img)]
+                        
+                        # 应用图片预压缩逻辑
+                        payload = []
+                        optimized_room = optimize_image_for_api(room_img)
+                        if optimized_room: payload.append(optimized_room)
+                        
                         for f in items_img:
-                            payload.append(Image.open(f))
+                            optimized_item = optimize_image_for_api(f)
+                            if optimized_item: payload.append(optimized_item)
                         
                         prompt_engineer_task = f"""
-                        You are an expert interior design prompt engineer for an AI image generator (like Midjourney or Imagen).
-                        I have provided a base room image and some furniture images.
-                        Your task is to analyze the room's architecture, lighting, and the uploaded furniture, and write a SINGLE, highly detailed, photorealistic text-to-image prompt in ENGLISH.
+                        You are an expert interior design prompt engineer for an AI image generator.
+                        Analyze the room's architecture, lighting, and the uploaded furniture. 
+                        Write a SINGLE, highly detailed, photorealistic text-to-image prompt in ENGLISH.
                         
                         Requirements:
-                        1. Describe the interior architecture and layout based on the first image.
-                        2. Seamlessly describe the provided furniture items as part of the room.
-                        3. The requested style/lighting is: {style_list[style_name]}.
+                        1. Describe the interior architecture based on the first image.
+                        2. Seamlessly integrate the provided furniture items.
+                        3. Style: {style_list[style_name]}.
                         4. User's specific notes: {note if note else "Blend naturally"}.
-                        5. Add photographic modifiers (e.g., photorealistic, 8k resolution, ray tracing, architectural photography, volumetric lighting).
+                        5. Add photographic modifiers (e.g., photorealistic, 8k, ray tracing, architectural photography).
                         
-                        ONLY output the final English prompt. Do not output any other explanatory text.
+                        ONLY output the final English prompt. No explanation.
                         """
                         payload.append(prompt_engineer_task)
                         vision_response = vision_model.generate_content(payload)
                         generated_prompt = vision_response.text.strip()
-                        print(f"Generated Imagen Prompt: {generated_prompt}")
+                        print(f"✅ 生成的 Prompt: {generated_prompt}")
 
                     # =========================================================
-                    # STEP 2: 直接调用全局函数执行 Imagen 4.0 渲染
+                    # STEP 2: Imagen 4.0 执行渲染
                     # =========================================================
-                    with st.spinner("2/2: Imagen 4.0 正在执行逼真光影渲染... (这可能需要 10-15 秒)"):
-                        
-                        # --- 核心修复：使用标准的全局函数调用生图 API ---
+                    with st.spinner("2/2: Imagen 4.0 正在执行逼真光影渲染... (预计 10-20 秒)"):
                         image_result = genai.generate_images(
                             prompt=generated_prompt,
                             number_of_images=1,
@@ -157,7 +174,6 @@ if check_auth():
                             aspect_ratio=aspect_ratio_map[aspect_ratio]
                         )
                         
-                        # 解析输出并展示
                         if image_result and image_result.images:
                             img_data = image_result.images[0].image.image_bytes
                             final_image = Image.open(io.BytesIO(img_data))
@@ -181,10 +197,10 @@ if check_auth():
                             with st.expander("👀 查看底层生图核心指令 (Prompt)"):
                                 st.write(generated_prompt)
                         else:
-                            st.error("未能生成图像，请重试或修改提示词。")
+                            st.error("未能生成图像，可能触发了安全拦截，请修改提示词。")
                             
                 except Exception as e:
-                    st.error(f"渲染中发生错误：{str(e)}")
+                    st.error(f"渲染链路发生异常：{str(e)}")
 
 # --- 版权底栏 ---
 st.markdown("---")
