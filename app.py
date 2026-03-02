@@ -109,4 +109,69 @@ if check_auth():
         items_img = st.file_uploader("2. 家具素材 (多选)", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True)
         if items_img:
             preview_cols = st.columns(4)
-            for idx, f in enumerate(
+            # --- 此处已确保 enumerate 括号完美闭合 ---
+            for idx, f in enumerate(items_img):
+                with preview_cols[idx % 4]:
+                    st.image(f, use_container_width=True)
+                    
+        # 3. 补充描述
+        note = st.text_area("3. 补充描述", placeholder="例如：将上传的窗帘替换掉原来的窗帘，并调整室内光影。")
+
+    with col2:
+        st.subheader("✨ 渲染预览", anchor=False)
+        if st.button("开始 Pro 级高保真渲染", type="primary", use_container_width=True):
+            if not room_img:
+                st.warning("请先上传 1. 房间底图。")
+            else:
+                try:
+                    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+                    
+                    # 动态探测模型
+                    available_names = [m.name for m in genai.list_models()]
+                    target_priority = ['models/gemini-1.5-pro', 'models/gemini-1.5-flash']
+                    selected = next((m for m in target_priority if m in available_names), 'models/gemini-1.5-pro')
+                    
+                    model = genai.GenerativeModel(selected)
+
+                    with st.spinner(f"正在驱动 {selected.split('/')[-1]} 渲染中..."):
+                        payload = [Image.open(room_img)]
+                        for f in items_img:
+                            payload.append(Image.open(f))
+                        
+                        p_text = f"""
+                        TASK: Photorealistic Interior Rendering.
+                        INPUT: Image 1 is the room. Other images are furniture items.
+                        INSTRUCTION: Seamlessly blend the items into the room.
+                        STYLE: {style_list[style_name]}
+                        DETAILS: {note if note else "Natural integration."}
+                        FORMAT: Output the edited image first, followed by a markdown table of materials if requested.
+                        """
+                        if show_list: p_text += "\n[MANDATORY: Include Material List Table]"
+                        payload.append(p_text)
+                        
+                        response = model.generate_content(payload)
+                        
+                        if response.candidates:
+                            has_image = False
+                            for part in response.candidates[0].content.parts:
+                                if hasattr(part, 'inline_data') and part.inline_data:
+                                    st.image(part.inline_data.data, caption=f"渲染完成 ({res})", use_container_width=True)
+                                    st.download_button("📥 下载设计高清图", part.inline_data.data, "luolai_pro_design.png", "image/png")
+                                    has_image = True
+                                elif hasattr(part, 'text') and part.text:
+                                    st.markdown(part.text)
+                            
+                            if has_image:
+                                stats["total"] += 1
+                                usr = st.session_state["current_user"]
+                                stats["codes"][usr] = stats["codes"].get(usr, 0) + 1
+                                st.success("设计方案渲染成功！")
+                                st.balloons()
+                            else:
+                                st.error("⚠️ AI 仅返回了文字建议，未生成图像。请尝试简化图片背景或在‘补充描述’中明确要求‘生成渲染图’。")
+                except Exception as e:
+                    st.error(f"渲染中发生错误：{str(e)}")
+
+# --- 版权底栏 ---
+st.markdown("---")
+st.markdown("<p style='text-align: center; color: gray;'>观世不笑 · 2026 商业授权版 | 罗莱软装官方技术支持</p>", unsafe_allow_html=True)
