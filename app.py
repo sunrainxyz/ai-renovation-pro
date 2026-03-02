@@ -104,18 +104,18 @@ if check_auth():
 
     with col1:
         st.subheader("🖼️ 素材上传", anchor=False)
-        room_img = st.file_uploader("1.房间底图 (必需)", type=['png', 'jpg', 'jpeg'])
+        room_img = st.file_uploader("1. 房间底图 (必需)", type=['png', 'jpg', 'jpeg'])
         if room_img:
             st.image(room_img, caption="✅ 底图已就绪", use_container_width=True)
             
-        items_img = st.file_uploader("2.家具素材 (多选)", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True)
+        items_img = st.file_uploader("2. 家具素材 (多选)", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True)
         if items_img:
             preview_cols = st.columns(4)
             for idx, f in enumerate(items_img):
                 with preview_cols[idx % 4]:
                     st.image(f, use_container_width=True)
                     
-        note = st.text_area("3.补充描述", placeholder="将上传的窗帘安装到窗户上")
+        note = st.text_area("3. 补充描述", placeholder="例如：保留原有木地板，将上传的灰色沙发放在窗边。")
 
     with col2:
         st.subheader("✨ 旗舰视觉生成", anchor=False)
@@ -162,10 +162,9 @@ if check_auth():
                         payload.append(prompt_engineer_task)
                         vision_response = vision_model.generate_content(payload)
                         generated_prompt = vision_response.text.strip()
-                        print(f"✅ 生成的 Prompt: {generated_prompt}")
 
                     # =========================================================
-                    # STEP 2: 使用 REST API 调用 Imagen 4.0 (防 SDK 报错)
+                    # STEP 2: 使用 REST API 调用 Imagen 4.0 (已修正键名)
                     # =========================================================
                     with st.spinner("2/2: Imagen 4.0 正在执行逼真光影渲染... (预计 10-20 秒)"):
                         url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key={api_key}"
@@ -180,13 +179,13 @@ if check_auth():
                             }
                         }
                         
-                        # 发送原生 HTTP POST 请求
                         resp = requests.post(url, json=payload_data)
                         
                         if resp.status_code == 200:
                             result_json = resp.json()
                             if "predictions" in result_json and len(result_json["predictions"]) > 0:
-                                b64_image = result_json["predictions"][0]["bytesBase64"]
+                                # --- 核心修正：加入 Encoded ---
+                                b64_image = result_json["predictions"][0]["bytesBase64Encoded"]
                                 img_data = base64.b64decode(b64_image)
                                 final_image = Image.open(io.BytesIO(img_data))
                                 
