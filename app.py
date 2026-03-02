@@ -122,7 +122,7 @@ if check_auth():
             '极简主义 (Minimalist)': "Clean lines, negative space, soft diffuse lighting, minimalist decor.",
             '复古胶片 (Vintage)': "Vintage film aesthetic, nostalgic mood, realistic textures, moody lighting."
         }
-        style_name = st.selectbox("选择生图风格滤镜", list(style_list.keys()))
+        style_name = st.selectbox("4.选择生图风格滤镜", list(style_list.keys()))
         
         aspect_ratio_map = {
             "✨ 智能匹配原图比例": "auto",
@@ -132,7 +132,7 @@ if check_auth():
             "3:4 (中画幅竖向)": "3:4",
             "9:16 (手机竖屏)": "9:16"
         }
-        aspect_ratio = st.selectbox("输出画幅", list(aspect_ratio_map.keys()))
+        aspect_ratio = st.selectbox("5.输出画幅", list(aspect_ratio_map.keys()))
         st.divider()
 
     col1, col2 = st.columns([1, 1])
