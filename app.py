@@ -34,12 +34,18 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. 统计逻辑 ---
+# --- 3. 统计与持久化状态初始化 ---
 @st.cache_resource
 def get_traffic_stats():
     return {"total": 0, "codes": {}}
 
 stats = get_traffic_stats()
+
+# 核心修正 1：初始化持久化存储，防止点击下载后图片消失
+if "result_image" not in st.session_state:
+    st.session_state["result_image"] = None
+if "result_prompt" not in st.session_state:
+    st.session_state["result_prompt"] = None
 
 # --- 4. 授权门禁系统 ---
 def check_auth():
@@ -63,7 +69,7 @@ def check_auth():
         return False
     return True
 
-# --- 核心：安全图片预处理函数 ---
+# --- 核心函数 A：安全图片预处理 ---
 def optimize_image_for_api(uploaded_file, max_size=(1024, 1024)):
     try:
         img = Image.open(uploaded_file)
@@ -75,7 +81,29 @@ def optimize_image_for_api(uploaded_file, max_size=(1024, 1024)):
         st.error(f"图片处理失败：{str(e)}")
         return None
 
-# --- 5. 核心逻辑入口 ---
+# --- 核心函数 B：智能计算原图画幅 ---
+def get_closest_aspect_ratio(image_file):
+    """读取原图尺寸，匹配最接近的 Imagen 4.0 支持画幅"""
+    try:
+        img = Image.open(image_file)
+        w, h = img.size
+        ratio = w / h
+        
+        # Imagen 4.0 官方支持的比例映射表
+        supported_ratios = {
+            "1:1": 1.0,
+            "4:3": 4/3,
+            "3:4": 3/4,
+            "16:9": 16/9,
+            "9:16": 9/16
+        }
+        # 寻找差值最小的最佳匹配比例
+        closest_ratio_key = min(supported_ratios.items(), key=lambda x: abs(x[1] - ratio))[0]
+        return closest_ratio_key
+    except Exception:
+        return "1:1" # 发生异常时的兜底方案
+
+# --- 5. 主程序入口 ---
 if check_auth():
     if st.session_state["current_user"] == "ADMIN":
         with st.sidebar:
@@ -96,7 +124,16 @@ if check_auth():
             '复古胶片 (Vintage)': "Vintage film aesthetic, nostalgic mood, realistic textures, moody lighting."
         }
         style_name = st.selectbox("选择生图风格滤镜", list(style_list.keys()))
-        aspect_ratio_map = {"16:9 (横向)": "16:9", "1:1 (方形)": "1:1", "9:16 (竖向)": "9:16"}
+        
+        # 核心修正 2：添加“智能匹配原图”选项，并设为默认
+        aspect_ratio_map = {
+            "✨ 智能匹配原图比例": "auto",
+            "16:9 (标准横向)": "16:9",
+            "4:3 (中画幅横向)": "4:3",
+            "1:1 (正方形)": "1:1",
+            "3:4 (中画幅竖向)": "3:4",
+            "9:16 (手机竖屏)": "9:16"
+        }
         aspect_ratio = st.selectbox("输出画幅", list(aspect_ratio_map.keys()))
         st.divider()
 
@@ -115,7 +152,6 @@ if check_auth():
                 with preview_cols[idx % 4]:
                     st.image(f, use_container_width=True)
                     
-        # --- 核心修改：使用 value 提供默认强引导词 ---
         note = st.text_area(
             "3.补充描述", 
             value="请将我上传的窗帘素材安装并替换掉房间原有的窗帘，注意保持布料的垂坠感与室内光影的自然和谐。"
@@ -123,22 +159,30 @@ if check_auth():
 
     with col2:
         st.subheader("✨ 旗舰视觉生成", anchor=False)
+        
+        # 渲染按钮逻辑
         if st.button("🚀 启动 Imagen 4.0 超写实渲染", type="primary", use_container_width=True):
             if not room_img:
                 st.warning("请先上传 1. 房间底图。")
             else:
+                # 清理上一轮的残留图像
+                st.session_state["result_image"] = None
+                
                 try:
                     api_key = st.secrets["GEMINI_API_KEY"]
                     genai.configure(api_key=api_key)
                     
-                    # =========================================================
-                    # STEP 1: Gemini 视觉解析 (生成提示词)
-                    # =========================================================
+                    # 确定最终画幅比例
+                    final_ratio = aspect_ratio_map[aspect_ratio]
+                    if final_ratio == "auto":
+                        final_ratio = get_closest_aspect_ratio(room_img)
+                        st.toast(f"📐 自动匹配生图比例为：{final_ratio}")
+                    
+                    # STEP 1: Gemini 视觉解析
                     with st.spinner("1/2: Gemini 视觉解析中 (已开启提速压缩)..."):
                         available_names = [m.name for m in genai.list_models()]
                         vision_models = ['models/gemini-2.5-pro', 'models/gemini-3.1-pro-preview', 'models/gemini-1.5-pro']
                         selected_vision = next((m for m in vision_models if m in available_names), available_names[0])
-                        
                         vision_model = genai.GenerativeModel(selected_vision)
                         
                         payload = []
@@ -167,20 +211,12 @@ if check_auth():
                         vision_response = vision_model.generate_content(payload)
                         generated_prompt = vision_response.text.strip()
 
-                    # =========================================================
-                    # STEP 2: 使用 REST API 调用 Imagen 4.0
-                    # =========================================================
-                    with st.spinner("2/2: Imagen 4.0 正在执行逼真光影渲染... (预计 10-20 秒)"):
+                    # STEP 2: Imagen 4.0 图像渲染
+                    with st.spinner(f"2/2: Imagen 4.0 正在以 {final_ratio} 比例进行逼真光影渲染..."):
                         url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key={api_key}"
-                        
                         payload_data = {
-                            "instances": [
-                                {"prompt": generated_prompt}
-                            ],
-                            "parameters": {
-                                "sampleCount": 1,
-                                "aspectRatio": aspect_ratio_map[aspect_ratio]
-                            }
+                            "instances": [{"prompt": generated_prompt}],
+                            "parameters": {"sampleCount": 1, "aspectRatio": final_ratio}
                         }
                         
                         resp = requests.post(url, json=payload_data)
@@ -190,26 +226,16 @@ if check_auth():
                             if "predictions" in result_json and len(result_json["predictions"]) > 0:
                                 b64_image = result_json["predictions"][0]["bytesBase64Encoded"]
                                 img_data = base64.b64decode(b64_image)
-                                final_image = Image.open(io.BytesIO(img_data))
                                 
-                                st.image(final_image, caption=f"✨ Imagen 4.0 渲染完成", use_container_width=True)
-                                
-                                st.download_button(
-                                    label="📥 下载超清设计图", 
-                                    data=img_data, 
-                                    file_name="luolai_imagen4_design.png", 
-                                    mime="image/png",
-                                    use_container_width=True
-                                )
+                                # 将成果写入持久化内存
+                                st.session_state["result_image"] = img_data
+                                st.session_state["result_prompt"] = generated_prompt
                                 
                                 stats["total"] += 1
                                 usr = st.session_state["current_user"]
                                 stats["codes"][usr] = stats["codes"].get(usr, 0) + 1
                                 st.success("Imagen 超写实渲染成功！")
                                 st.balloons()
-                                
-                                with st.expander("👀 查看底层生图核心指令 (Prompt)"):
-                                    st.write(generated_prompt)
                             else:
                                 st.error("API 返回成功，但未包含图像数据。")
                         else:
@@ -217,6 +243,22 @@ if check_auth():
                             
                 except Exception as e:
                     st.error(f"渲染链路发生异常：{str(e)}")
+
+        # 核心修正 3：渲染成果展示模块（脱离 button 的阻断域）
+        if st.session_state.get("result_image"):
+            final_image = Image.open(io.BytesIO(st.session_state["result_image"]))
+            st.image(final_image, caption="✨ Imagen 4.0 渲染完成", use_container_width=True)
+            
+            st.download_button(
+                label="📥 下载超清设计图", 
+                data=st.session_state["result_image"], 
+                file_name="luolai_imagen4_design.png", 
+                mime="image/png",
+                use_container_width=True
+            )
+            
+            with st.expander("👀 查看底层生图核心指令 (Prompt)"):
+                st.write(st.session_state["result_prompt"])
 
 # --- 版权底栏 ---
 st.markdown("---")
