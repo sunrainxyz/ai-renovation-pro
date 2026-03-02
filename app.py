@@ -72,17 +72,7 @@ if check_auth():
         }
         style_name = st.selectbox("选择设计风格", list(style_list.keys()))
         show_list = st.toggle("📋 生成主材与采购清单", value=True)
-        
         st.divider()
-        # --- 新增：API 模型诊断工具 ---
-        st.subheader("🔍 API 诊断", anchor=False)
-        if st.button("查看我拥有的模型权限"):
-            try:
-                genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-                my_models = [m.name for m in genai.list_models()]
-                st.write(my_models)
-            except Exception as e:
-                st.error("API Key 验证失败，请检查 Secrets 配置。")
 
     col1, col2 = st.columns([1, 1])
 
@@ -110,18 +100,19 @@ if check_auth():
                 try:
                     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
                     
-                    # 绝对安全的模型探测：优先找 flash，因为它是免费且全区开放的
+                    # --- 核心修复：精准匹配您的超前 API 权限 ---
                     available_names = [m.name for m in genai.list_models()]
-                    target_priority = ['models/gemini-1.5-flash', 'models/gemini-1.5-pro']
+                    target_priority = [
+                        'models/gemini-3.1-pro-preview', 
+                        'models/gemini-2.5-pro', 
+                        'models/gemini-2.5-flash'
+                    ]
                     
-                    if not available_names:
-                        st.error("您的 API Key 无法获取任何模型，请检查额度或网络限制。")
-                        st.stop()
-                        
+                    # 绝对兜底机制，即使找不到优先模型，也抓取账号里的第一个可用模型
                     selected = next((m for m in target_priority if m in available_names), available_names[0])
                     model = genai.GenerativeModel(selected)
 
-                    with st.spinner(f"正在驱动 {selected.split('/')[-1]} 进行空间与色彩解析..."):
+                    with st.spinner(f"正在驱动旗舰级 {selected.split('/')[-1]} 进行空间解析..."):
                         payload = [Image.open(room_img)]
                         for f in items_img:
                             payload.append(Image.open(f))
@@ -150,7 +141,7 @@ if check_auth():
                             st.success("诊断报告已生成！")
                             st.balloons()
                 except Exception as e:
-                    st.error(f"分析中发生错误：{str(e)}\n\n请尝试点击侧边栏的“查看我拥有的模型权限”进行排查。")
+                    st.error(f"分析中发生错误：{str(e)}")
 
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: gray;'>观世不笑 · 2026 商业授权版 | 罗莱软装官方技术支持</p>", unsafe_allow_html=True)
