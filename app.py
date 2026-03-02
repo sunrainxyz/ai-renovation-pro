@@ -150,7 +150,7 @@ if check_auth():
         )
 
     with col2:
-        st.subheader("✨ AI模拟装修效果", anchor=False)
+        st.subheader("✨ AI模拟装修", anchor=False)
         
         if st.button("🚀 启动 Imagen 4.0 超写实渲染", type="primary", use_container_width=True):
             if not room_img:
