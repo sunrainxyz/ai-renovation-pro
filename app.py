@@ -89,7 +89,7 @@ if check_auth():
                 with preview_cols[idx % 4]:
                     st.image(f, use_container_width=True)
                     
-        note = st.text_area("3. 补充描述", placeholder="例如：请分析将这些家具放入房间后，空间色彩是否协调？")
+        note = st.text_area("3. 补充描述", placeholder="例如：将这些家具放入房间")
 
     with col2:
         st.subheader("✨ AI 方案分析结果", anchor=False)
