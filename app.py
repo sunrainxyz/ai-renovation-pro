@@ -63,7 +63,6 @@ def check_auth():
 
 # --- 5. 核心逻辑入口 ---
 if check_auth():
-    # 管理员后台
     if st.session_state["current_user"] == "ADMIN":
         with st.sidebar:
             st.header("📈 后台流量监控", anchor=False)
@@ -102,7 +101,7 @@ if check_auth():
                 with preview_cols[idx % 4]:
                     st.image(f, use_container_width=True)
                     
-        note = st.text_area("3. 补充描述", placeholder="例如：保留原有木地板，将上传的灰色沙发放在窗边。")
+        note = st.text_area("3. 补充描述", placeholder="将上传的窗帘替换房间里的窗帘。")
 
     with col2:
         st.subheader("✨ 旗舰视觉生成", anchor=False)
@@ -114,10 +113,14 @@ if check_auth():
                     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
                     
                     # =========================================================
-                    # STEP 1: Gemini 2.5 Pro 作为“设计总监”写生图 Prompt
+                    # STEP 1: Gemini 2.5 Pro 提取视觉特征并生成 Prompt
                     # =========================================================
                     with st.spinner("1/2: Gemini 2.5 Pro 正在进行空间视觉解析..."):
-                        vision_model = genai.GenerativeModel('models/gemini-2.5-pro')
+                        available_names = [m.name for m in genai.list_models()]
+                        vision_models = ['models/gemini-3.1-pro-preview', 'models/gemini-2.5-pro', 'models/gemini-1.5-pro']
+                        selected_vision = next((m for m in vision_models if m in available_names), available_names[0])
+                        
+                        vision_model = genai.GenerativeModel(selected_vision)
                         payload = [Image.open(room_img)]
                         for f in items_img:
                             payload.append(Image.open(f))
@@ -139,20 +142,18 @@ if check_auth():
                         payload.append(prompt_engineer_task)
                         vision_response = vision_model.generate_content(payload)
                         generated_prompt = vision_response.text.strip()
-                        
-                        # 可以在终端打印出来方便调试
                         print(f"Generated Imagen Prompt: {generated_prompt}")
 
                     # =========================================================
-                    # STEP 2: Imagen 4.0 作为“渲染师”直接出图
+                    # STEP 2: 直接调用全局函数执行 Imagen 4.0 渲染
                     # =========================================================
                     with st.spinner("2/2: Imagen 4.0 正在执行逼真光影渲染... (这可能需要 10-15 秒)"):
-                        # 调用您账户中的顶级生图模型
-                        imagen_model = genai.ImageGenerationModel("models/imagen-4.0-generate-001")
                         
-                        image_result = imagen_model.generate_images(
+                        # --- 核心修复：使用标准的全局函数调用生图 API ---
+                        image_result = genai.generate_images(
                             prompt=generated_prompt,
                             number_of_images=1,
+                            model="models/imagen-4.0-generate-001",
                             aspect_ratio=aspect_ratio_map[aspect_ratio]
                         )
                         
@@ -163,7 +164,6 @@ if check_auth():
                             
                             st.image(final_image, caption=f"✨ Imagen 4.0 渲染完成", use_container_width=True)
                             
-                            # 提供高清下载
                             st.download_button(
                                 label="📥 下载超清设计图", 
                                 data=img_data, 
@@ -172,14 +172,12 @@ if check_auth():
                                 use_container_width=True
                             )
                             
-                            # 计费统计
                             stats["total"] += 1
                             usr = st.session_state["current_user"]
                             stats["codes"][usr] = stats["codes"].get(usr, 0) + 1
                             st.success("Imagen 超写实渲染成功！")
                             st.balloons()
                             
-                            # 可选：向客户展示 AI 在后台到底“想”了什么
                             with st.expander("👀 查看底层生图核心指令 (Prompt)"):
                                 st.write(generated_prompt)
                         else:
