@@ -41,7 +41,6 @@ def get_traffic_stats():
 
 stats = get_traffic_stats()
 
-# 核心修正 1：初始化持久化存储，防止点击下载后图片消失
 if "result_image" not in st.session_state:
     st.session_state["result_image"] = None
 if "result_prompt" not in st.session_state:
@@ -83,13 +82,11 @@ def optimize_image_for_api(uploaded_file, max_size=(1024, 1024)):
 
 # --- 核心函数 B：智能计算原图画幅 ---
 def get_closest_aspect_ratio(image_file):
-    """读取原图尺寸，匹配最接近的 Imagen 4.0 支持画幅"""
     try:
         img = Image.open(image_file)
         w, h = img.size
         ratio = w / h
         
-        # Imagen 4.0 官方支持的比例映射表
         supported_ratios = {
             "1:1": 1.0,
             "4:3": 4/3,
@@ -97,11 +94,10 @@ def get_closest_aspect_ratio(image_file):
             "16:9": 16/9,
             "9:16": 9/16
         }
-        # 寻找差值最小的最佳匹配比例
         closest_ratio_key = min(supported_ratios.items(), key=lambda x: abs(x[1] - ratio))[0]
         return closest_ratio_key
     except Exception:
-        return "1:1" # 发生异常时的兜底方案
+        return "1:1" 
 
 # --- 5. 主程序入口 ---
 if check_auth():
@@ -117,7 +113,10 @@ if check_auth():
     with st.sidebar:
         st.title("🛠️ 渲染参数 (Imagen 4.0)", anchor=False)
         st.caption("视觉引擎：Google Imagen 4 | 技术支持：观世不笑")
+        
+        # --- 核心修改：新增“保持原图”并置于首位作为默认值 ---
         style_list = {
+            '✨ 保持原图 (Original)': "Maintain the original lighting, color palette, and architectural style of the base image exactly.",
             '温馨暖调 (Warm)': "Cozy, warm, soft lighting, inviting atmosphere, wood or creamy tones.",
             '清冷高级 (Cool)': "Modern, cool-toned, chic, minimalist, high-end aesthetics.",
             '极简主义 (Minimalist)': "Clean lines, negative space, soft diffuse lighting, minimalist decor.",
@@ -125,7 +124,6 @@ if check_auth():
         }
         style_name = st.selectbox("选择生图风格滤镜", list(style_list.keys()))
         
-        # 核心修正 2：添加“智能匹配原图”选项，并设为默认
         aspect_ratio_map = {
             "✨ 智能匹配原图比例": "auto",
             "16:9 (标准横向)": "16:9",
@@ -141,11 +139,11 @@ if check_auth():
 
     with col1:
         st.subheader("🖼️ 素材上传", anchor=False)
-        room_img = st.file_uploader("1.房间底图 (必需)", type=['png', 'jpg', 'jpeg'])
+        room_img = st.file_uploader("1. 房间底图 (必需)", type=['png', 'jpg', 'jpeg'])
         if room_img:
             st.image(room_img, caption="✅ 底图已就绪", use_container_width=True)
             
-        items_img = st.file_uploader("2.家具素材 (多选)", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True)
+        items_img = st.file_uploader("2. 家具素材 (多选)", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True)
         if items_img:
             preview_cols = st.columns(4)
             for idx, f in enumerate(items_img):
@@ -153,32 +151,28 @@ if check_auth():
                     st.image(f, use_container_width=True)
                     
         note = st.text_area(
-            "3.补充描述", 
+            "3. 补充描述", 
             value="请将我上传的窗帘素材安装并替换掉房间原有的窗帘，注意保持布料的垂坠感与室内光影的自然和谐。"
         )
 
     with col2:
         st.subheader("✨ 旗舰视觉生成", anchor=False)
         
-        # 渲染按钮逻辑
         if st.button("🚀 启动 Imagen 4.0 超写实渲染", type="primary", use_container_width=True):
             if not room_img:
                 st.warning("请先上传 1. 房间底图。")
             else:
-                # 清理上一轮的残留图像
                 st.session_state["result_image"] = None
                 
                 try:
                     api_key = st.secrets["GEMINI_API_KEY"]
                     genai.configure(api_key=api_key)
                     
-                    # 确定最终画幅比例
                     final_ratio = aspect_ratio_map[aspect_ratio]
                     if final_ratio == "auto":
                         final_ratio = get_closest_aspect_ratio(room_img)
                         st.toast(f"📐 自动匹配生图比例为：{final_ratio}")
                     
-                    # STEP 1: Gemini 视觉解析
                     with st.spinner("1/2: Gemini 视觉解析中 (已开启提速压缩)..."):
                         available_names = [m.name for m in genai.list_models()]
                         vision_models = ['models/gemini-2.5-pro', 'models/gemini-3.1-pro-preview', 'models/gemini-1.5-pro']
@@ -211,7 +205,6 @@ if check_auth():
                         vision_response = vision_model.generate_content(payload)
                         generated_prompt = vision_response.text.strip()
 
-                    # STEP 2: Imagen 4.0 图像渲染
                     with st.spinner(f"2/2: Imagen 4.0 正在以 {final_ratio} 比例进行逼真光影渲染..."):
                         url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key={api_key}"
                         payload_data = {
@@ -227,7 +220,6 @@ if check_auth():
                                 b64_image = result_json["predictions"][0]["bytesBase64Encoded"]
                                 img_data = base64.b64decode(b64_image)
                                 
-                                # 将成果写入持久化内存
                                 st.session_state["result_image"] = img_data
                                 st.session_state["result_prompt"] = generated_prompt
                                 
@@ -244,7 +236,6 @@ if check_auth():
                 except Exception as e:
                     st.error(f"渲染链路发生异常：{str(e)}")
 
-        # 核心修正 3：渲染成果展示模块（脱离 button 的阻断域）
         if st.session_state.get("result_image"):
             final_image = Image.open(io.BytesIO(st.session_state["result_image"]))
             st.image(final_image, caption="✨ Imagen 4.0 渲染完成", use_container_width=True)
