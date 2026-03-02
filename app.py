@@ -188,30 +188,30 @@ if check_auth():
                             if optimized_item: payload.append(optimized_item)
                         
                         # --- 核心强化：解剖级视觉特征提取 ---
-prompt_engineer_task = f"""
-You are a highly analytical interior design prompt engineer for the Imagen 4.0 generator.
-Analyze the room's architecture and the uploaded furniture. 
-Write a SINGLE, highly detailed, photorealistic text-to-image prompt in ENGLISH.
-
-Requirements:
-1. Environment: Describe the interior architecture based on the first image.
-2. Style: {style_list[style_name]}.
-3. Task: {note if note else "Seamlessly integrate the items."}
-"""
-
-if enable_ref and items_img:
-    prompt_engineer_task += """
-    [ABSOLUTE REPLICATION PROTOCOL]: You must act as a precise visual scanner for the uploaded furniture/curtain.
-    You MUST extract and explicitly state in the prompt:
-    - The EXACT color palette (mention approximate hex codes or specific color names like 'Navy Blue #000080').
-    - The EXACT material and texture (e.g., 'heavy matte velvet', 'translucent linen', 'shiny silk').
-    - The EXACT pattern, fabric folds, hanging style (e.g., 'grommet top', 'pinch pleat'), and hardware.
-    FORCE the image generator to replicate this exact physical item. Do not invent any new design for the added item.
-    """
-else:
-    prompt_engineer_task += "\n4. Seamlessly integrate the provided furniture items."
-    
-prompt_engineer_task += "\nONLY output the final English prompt. NO explanatory text."
+                        prompt_engineer_task = f"""
+                        You are a highly analytical interior design prompt engineer for the Imagen 4.0 generator.
+                        Analyze the room's architecture and the uploaded furniture. 
+                        Write a SINGLE, highly detailed, photorealistic text-to-image prompt in ENGLISH.
+                        
+                        Requirements:
+                        1. Environment: Describe the interior architecture based on the first image.
+                        2. Style: {style_list[style_name]}.
+                        3. Task: {note if note else "Seamlessly integrate the items."}
+                        """
+                        
+                        if enable_ref and items_img:
+                            prompt_engineer_task += """
+                            [ABSOLUTE REPLICATION PROTOCOL]: You must act as a precise visual scanner for the uploaded furniture/curtain.
+                            You MUST extract and explicitly state in the prompt:
+                            - The EXACT color palette (mention approximate hex codes or specific color names like 'Navy Blue #000080').
+                            - The EXACT material and texture (e.g., 'heavy matte velvet', 'translucent linen', 'shiny silk').
+                            - The EXACT pattern, fabric folds, hanging style (e.g., 'grommet top', 'pinch pleat'), and hardware.
+                            FORCE the image generator to replicate this exact physical item. Do not invent any new design for the added item.
+                            """
+                        else:
+                            prompt_engineer_task += "\n4. Seamlessly integrate the provided furniture items."
+                            
+                        prompt_engineer_task += "\nONLY output the final English prompt. NO explanatory text."
                         
                         Requirements:
                         1. Describe the interior architecture based on the first image.
