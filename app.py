@@ -24,6 +24,7 @@ st.markdown("""
         content: "选择图片"; font-size: 14px !important; visibility: visible; display: block;
     }
     .stApp a.element-container:hover { display: none !important; }
+    [data-testid="stSidebar"] { background-color: #FFFFFF !important; }
     [data-testid="stSidebar"] [data-testid="stText"], 
     [data-testid="stSidebar"] label, [data-testid="stSidebar"] p, [data-testid="stSidebar"] span { color: #31333F !important; }
     footer {visibility: hidden;}
@@ -62,16 +63,28 @@ def check_auth():
 
 # --- 5. 核心逻辑入口 ---
 if check_auth():
+    # 管理员后台
+    if st.session_state["current_user"] == "ADMIN":
+        with st.sidebar:
+            st.header("📈 后台流量监控", anchor=False)
+            st.metric("累计生图次数", stats["total"])
+            st.table(stats["codes"])
+            if st.button("重置统计记录"):
+                stats["total"] = 0; stats["codes"] = {}; st.rerun()
+            st.divider()
+
     with st.sidebar:
-        st.title("🛠️ 设计参数", anchor=False)
-        st.caption("技术支持：观世不笑")
+        st.title("🛠️ 渲染参数 (Imagen 4.0)", anchor=False)
+        st.caption("视觉引擎：Google Imagen 4 | 技术支持：观世不笑")
         style_list = {
-            '温馨暖调 (Warm)': "温馨、柔和，偏向原木风或奶油风。",
-            '清冷高级 (Cool)': "现代简约，偏向黑白灰或极简高定风。",
-            '原图风格 (Original)': "保持原图的空间光影与硬装结构。"
+            '温馨暖调 (Warm)': "Cozy, warm, soft lighting, inviting atmosphere, wood or creamy tones.",
+            '清冷高级 (Cool)': "Modern, cool-toned, chic, minimalist, high-end aesthetics.",
+            '极简主义 (Minimalist)': "Clean lines, negative space, soft diffuse lighting, minimalist decor.",
+            '复古胶片 (Vintage)': "Vintage film aesthetic, nostalgic mood, realistic textures, moody lighting."
         }
-        style_name = st.selectbox("选择设计风格", list(style_list.keys()))
-        show_list = st.toggle("📋 生成主材与采购清单", value=True)
+        style_name = st.selectbox("选择生图风格滤镜", list(style_list.keys()))
+        aspect_ratio_map = {"16:9 (横向)": "16:9", "1:1 (方形)": "1:1", "9:16 (竖向)": "9:16"}
+        aspect_ratio = st.selectbox("输出画幅", list(aspect_ratio_map.keys()))
         st.divider()
 
     col1, col2 = st.columns([1, 1])
@@ -80,7 +93,7 @@ if check_auth():
         st.subheader("🖼️ 素材上传", anchor=False)
         room_img = st.file_uploader("1. 房间底图 (必需)", type=['png', 'jpg', 'jpeg'])
         if room_img:
-            st.image(room_img, caption="✅ 房间底图预览", use_container_width=True)
+            st.image(room_img, caption="✅ 底图已就绪", use_container_width=True)
             
         items_img = st.file_uploader("2. 家具素材 (多选)", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True)
         if items_img:
@@ -89,59 +102,92 @@ if check_auth():
                 with preview_cols[idx % 4]:
                     st.image(f, use_container_width=True)
                     
-        note = st.text_area("3. 补充描述", placeholder="例如：将这些家具放入房间")
+        note = st.text_area("3. 补充描述", placeholder="例如：保留原有木地板，将上传的灰色沙发放在窗边。")
 
     with col2:
-        st.subheader("✨ AI 方案分析结果", anchor=False)
-        if st.button("开始生成专业软装报告", type="primary", use_container_width=True):
+        st.subheader("✨ 旗舰视觉生成", anchor=False)
+        if st.button("🚀 启动 Imagen 4.0 超写实渲染", type="primary", use_container_width=True):
             if not room_img:
                 st.warning("请先上传 1. 房间底图。")
             else:
                 try:
                     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
                     
-                    # --- 核心修复：精准匹配您的超前 API 权限 ---
-                    available_names = [m.name for m in genai.list_models()]
-                    target_priority = [
-                        'models/gemini-3.1-pro-preview', 
-                        'models/gemini-2.5-pro', 
-                        'models/gemini-2.5-flash'
-                    ]
-                    
-                    # 绝对兜底机制，即使找不到优先模型，也抓取账号里的第一个可用模型
-                    selected = next((m for m in target_priority if m in available_names), available_names[0])
-                    model = genai.GenerativeModel(selected)
-
-                    with st.spinner(f"正在驱动旗舰级 {selected.split('/')[-1]} 进行空间解析..."):
+                    # =========================================================
+                    # STEP 1: Gemini 2.5 Pro 作为“设计总监”写生图 Prompt
+                    # =========================================================
+                    with st.spinner("1/2: Gemini 2.5 Pro 正在进行空间视觉解析..."):
+                        vision_model = genai.GenerativeModel('models/gemini-2.5-pro')
                         payload = [Image.open(room_img)]
                         for f in items_img:
                             payload.append(Image.open(f))
                         
-                        p_text = f"""
-                        作为一名顶级的室内软装设计师，请仔细观察我提供的第一张房间底图，以及后续的家具素材图。
-                        客户要求的设计风格是：{style_list[style_name]}。
-                        客户补充描述：{note if note else "无"}。
+                        prompt_engineer_task = f"""
+                        You are an expert interior design prompt engineer for an AI image generator (like Midjourney or Imagen).
+                        I have provided a base room image and some furniture images.
+                        Your task is to analyze the room's architecture, lighting, and the uploaded furniture, and write a SINGLE, highly detailed, photorealistic text-to-image prompt in ENGLISH.
                         
-                        请输出一份专业的软装诊断报告，包含：
-                        1. 空间与光影分析
-                        2. 家具融合度评价（这些家具放进去是否合适，为什么？）
-                        3. 色彩搭配建议
+                        Requirements:
+                        1. Describe the interior architecture and layout based on the first image.
+                        2. Seamlessly describe the provided furniture items as part of the room.
+                        3. The requested style/lighting is: {style_list[style_name]}.
+                        4. User's specific notes: {note if note else "Blend naturally"}.
+                        5. Add photographic modifiers (e.g., photorealistic, 8k resolution, ray tracing, architectural photography, volumetric lighting).
+                        
+                        ONLY output the final English prompt. Do not output any other explanatory text.
                         """
-                        if show_list: 
-                            p_text += "\n4. **主材采购清单**（请务必使用 Markdown 表格形式列出图中涉及的家具和材质建议）。"
-                            
-                        payload.append(p_text)
-                        response = model.generate_content(payload)
+                        payload.append(prompt_engineer_task)
+                        vision_response = vision_model.generate_content(payload)
+                        generated_prompt = vision_response.text.strip()
                         
-                        if response.candidates:
-                            st.markdown(response.text)
+                        # 可以在终端打印出来方便调试
+                        print(f"Generated Imagen Prompt: {generated_prompt}")
+
+                    # =========================================================
+                    # STEP 2: Imagen 4.0 作为“渲染师”直接出图
+                    # =========================================================
+                    with st.spinner("2/2: Imagen 4.0 正在执行逼真光影渲染... (这可能需要 10-15 秒)"):
+                        # 调用您账户中的顶级生图模型
+                        imagen_model = genai.ImageGenerationModel("models/imagen-4.0-generate-001")
+                        
+                        image_result = imagen_model.generate_images(
+                            prompt=generated_prompt,
+                            number_of_images=1,
+                            aspect_ratio=aspect_ratio_map[aspect_ratio]
+                        )
+                        
+                        # 解析输出并展示
+                        if image_result and image_result.images:
+                            img_data = image_result.images[0].image.image_bytes
+                            final_image = Image.open(io.BytesIO(img_data))
+                            
+                            st.image(final_image, caption=f"✨ Imagen 4.0 渲染完成", use_container_width=True)
+                            
+                            # 提供高清下载
+                            st.download_button(
+                                label="📥 下载超清设计图", 
+                                data=img_data, 
+                                file_name="luolai_imagen4_design.png", 
+                                mime="image/png",
+                                use_container_width=True
+                            )
+                            
+                            # 计费统计
                             stats["total"] += 1
                             usr = st.session_state["current_user"]
                             stats["codes"][usr] = stats["codes"].get(usr, 0) + 1
-                            st.success("诊断报告已生成！")
+                            st.success("Imagen 超写实渲染成功！")
                             st.balloons()
+                            
+                            # 可选：向客户展示 AI 在后台到底“想”了什么
+                            with st.expander("👀 查看底层生图核心指令 (Prompt)"):
+                                st.write(generated_prompt)
+                        else:
+                            st.error("未能生成图像，请重试或修改提示词。")
+                            
                 except Exception as e:
-                    st.error(f"分析中发生错误：{str(e)}")
+                    st.error(f"渲染中发生错误：{str(e)}")
 
+# --- 版权底栏 ---
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: gray;'>观世不笑 · 2026 商业授权版 | 罗莱软装官方技术支持</p>", unsafe_allow_html=True)
