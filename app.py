@@ -18,7 +18,7 @@ st.markdown("""
     <style>
     [data-testid="stFileUploaderDropzoneInstructions"] > div > span { display: none !important; }
     [data-testid="stFileUploaderDropzoneInstructions"] > div::before {
-        content: "将图片拖拽至此处";
+        content: "将房间照片或家具图片拖拽至此处";
         font-size: 16px; font-weight: bold; color: #31333F; display: block; margin-bottom: 10px;
     }
     [data-testid="stFileUploader"] button { font-size: 0px !important; }
@@ -46,10 +46,9 @@ if "result_image" not in st.session_state:
 if "result_prompt" not in st.session_state:
     st.session_state["result_prompt"] = None
 
-# --- 新增核心函数 C：大图沉浸式弹窗 ---
+# --- 核心组件：沉浸式大图弹窗 ---
 @st.dialog("🔍 超清细节预览", width="large")
 def show_zoomed_image(image_bytes):
-    """触发时将在屏幕中央弹出一个大屏浮层展示渲染图"""
     final_image = Image.open(io.BytesIO(image_bytes))
     st.image(final_image, use_container_width=True)
 
@@ -133,7 +132,7 @@ if check_auth():
         aspect_ratio = st.selectbox("输出画幅", list(aspect_ratio_map.keys()))
         
         st.divider()
-        enable_ref = st.toggle("🎯 启用几何特征强控 (文本级精准还原)", value=True, help="开启后，AI 将深度解析您上传家具的轮廓与折痕，以纯文本形式强制锁定 Imagen 的绘画结构。")
+        enable_ref = st.toggle("🎯 启用几何特征强控 (文本级精准还原)", value=True, help="开启后，AI将深度解析素材轮廓与色彩，强制锁定 Imagen 绘画结构。")
 
     col1, col2 = st.columns([1, 1])
 
@@ -187,7 +186,7 @@ if check_auth():
                             optimized_item = optimize_image_for_api(f)
                             if optimized_item: payload.append(optimized_item)
                         
-                        # --- 核心强化：解剖级视觉特征提取 ---
+                        # --- 核心进化：解剖级视觉特征提取 ---
                         prompt_engineer_task = f"""
                         You are a highly analytical interior design prompt engineer for the Imagen 4.0 generator.
                         Analyze the room's architecture and the uploaded furniture. 
@@ -212,21 +211,6 @@ if check_auth():
                             prompt_engineer_task += "\n4. Seamlessly integrate the provided furniture items."
                             
                         prompt_engineer_task += "\nONLY output the final English prompt. NO explanatory text."
-                        
-                        Requirements:
-                        1. Describe the interior architecture based on the first image.
-                        2. Style: {style_list[style_name]}.
-                        3. User's specific notes: {note if note else "Blend naturally"}.
-                        """
-                        
-                        if enable_ref and items_img:
-                            prompt_engineer_task += """
-                            [CRITICAL GEOMETRY CONSTRAINT]: You MUST extract the exact physical characteristics of the uploaded furniture (e.g., the precise fold patterns of the curtains, the exact color hex, the material texture, the geometric shape). Describe these features explicitly in the prompt to force the image generator to replicate the item exactly as it looks in the reference photo. Do not invent new furniture designs.
-                            """
-                        else:
-                            prompt_engineer_task += "\n4. Seamlessly integrate the provided furniture items."
-                            
-                        prompt_engineer_task += "\nONLY output the final English prompt. No explanation."
                         
                         payload.append(prompt_engineer_task)
                         vision_response = vision_model.generate_content(payload)
@@ -264,12 +248,10 @@ if check_auth():
                 except Exception as e:
                     st.error(f"渲染链路发生异常：{str(e)}")
 
-        # --- 核心修改：渲染结果展示与双按钮布局 ---
         if st.session_state.get("result_image"):
             final_image = Image.open(io.BytesIO(st.session_state["result_image"]))
             st.image(final_image, caption="✨ Imagen 4.0 渲染完成", use_container_width=True)
             
-            # 使用左右两列均匀摆放“下载”和“放大”按钮
             btn_col1, btn_col2 = st.columns(2)
             with btn_col1:
                 st.download_button(
@@ -280,7 +262,6 @@ if check_auth():
                     use_container_width=True
                 )
             with btn_col2:
-                # 点击此按钮将触发顶部的 @st.dialog 弹窗函数
                 if st.button("🔍 放大查看细节", use_container_width=True):
                     show_zoomed_image(st.session_state["result_image"])
             
