@@ -115,7 +115,11 @@ if check_auth():
                 with preview_cols[idx % 4]:
                     st.image(f, use_container_width=True)
                     
-        note = st.text_area("3.补充描述", placeholder="例如：保留原有木地板，将上传的灰色沙发放在窗边。")
+        # --- 核心修改：使用 value 提供默认强引导词 ---
+        note = st.text_area(
+            "3.补充描述", 
+            value="请将我上传的窗帘素材安装并替换掉房间原有的窗帘，注意保持布料的垂坠感与室内光影的自然和谐。"
+        )
 
     with col2:
         st.subheader("✨ 旗舰视觉生成", anchor=False)
@@ -164,7 +168,7 @@ if check_auth():
                         generated_prompt = vision_response.text.strip()
 
                     # =========================================================
-                    # STEP 2: 使用 REST API 调用 Imagen 4.0 (已修正键名)
+                    # STEP 2: 使用 REST API 调用 Imagen 4.0
                     # =========================================================
                     with st.spinner("2/2: Imagen 4.0 正在执行逼真光影渲染... (预计 10-20 秒)"):
                         url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key={api_key}"
@@ -184,7 +188,6 @@ if check_auth():
                         if resp.status_code == 200:
                             result_json = resp.json()
                             if "predictions" in result_json and len(result_json["predictions"]) > 0:
-                                # --- 核心修正：加入 Encoded ---
                                 b64_image = result_json["predictions"][0]["bytesBase64Encoded"]
                                 img_data = base64.b64decode(b64_image)
                                 final_image = Image.open(io.BytesIO(img_data))
