@@ -117,17 +117,17 @@ if check_auth():
             '极简主义 (Minimalist)': "Clean lines, negative space, soft diffuse lighting, minimalist decor.",
             '复古胶片 (Vintage)': "Vintage film aesthetic, nostalgic mood, realistic textures, moody lighting."
         }
-        style_name = st.selectbox("4.选择生图风格滤镜", list(style_list.keys()))
+        style_name = st.selectbox("选择生图风格滤镜", list(style_list.keys()))
         
         aspect_ratio_map = {
             "✨ 智能匹配原图比例": "auto", "16:9 (标准横向)": "16:9", "4:3 (中画幅横向)": "4:3",
             "1:1 (正方形)": "1:1", "3:4 (中画幅竖向)": "3:4", "9:16 (手机竖屏)": "9:16"
         }
-        aspect_ratio = st.selectbox("5.输出画幅", list(aspect_ratio_map.keys()))
+        aspect_ratio = st.selectbox("输出画幅", list(aspect_ratio_map.keys()))
         
         st.divider()
-        # --- 新增：垫图控制开关 ---
-        enable_ref = st.toggle("🎯 启用精准垫图控制 (严格遵循素材形状)", value=True, help="开启后，将以您上传的第一张家具素材作为底层结构参考，防止 AI 随意改变款式。")
+        # --- 转变策略：从 API 垫图转为大模型特征强提 ---
+        enable_ref = st.toggle("🎯 启用几何特征强控 (文本级精准还原)", value=True, help="开启后，AI 将深度解析您上传家具的轮廓与折痕，以纯文本形式强制锁定 Imagen 的绘画结构。")
 
     col1, col2 = st.columns([1, 1])
 
@@ -150,7 +150,7 @@ if check_auth():
         )
 
     with col2:
-        st.subheader("✨ AI模拟装修", anchor=False)
+        st.subheader("✨ AI装修模拟", anchor=False)
         
         if st.button("🚀 启动 Imagen 4.0 超写实渲染", type="primary", use_container_width=True):
             if not room_img:
@@ -167,7 +167,7 @@ if check_auth():
                         final_ratio = get_closest_aspect_ratio(room_img)
                         st.toast(f"📐 自动匹配生图比例为：{final_ratio}")
                     
-                    with st.spinner("1/2: Gemini 视觉解析中 (提取核心特征)..."):
+                    with st.spinner("1/2: Gemini 正在进行结构特征提取与解析..."):
                         available_names = [m.name for m in genai.list_models()]
                         vision_models = ['models/gemini-2.5-pro', 'models/gemini-3.1-pro-preview', 'models/gemini-1.5-pro']
                         selected_vision = next((m for m in vision_models if m in available_names), available_names[0])
@@ -181,42 +181,40 @@ if check_auth():
                             optimized_item = optimize_image_for_api(f)
                             if optimized_item: payload.append(optimized_item)
                         
+                        # 构建基础 Prompt 任务
                         prompt_engineer_task = f"""
-                        You are an expert interior design prompt engineer for an AI image generator.
-                        Analyze the room's architecture, lighting, and the uploaded furniture. 
+                        You are an expert interior design prompt engineer for the Imagen 4.0 generator.
+                        Analyze the room's architecture and the uploaded furniture. 
                         Write a SINGLE, highly detailed, photorealistic text-to-image prompt in ENGLISH.
                         
                         Requirements:
                         1. Describe the interior architecture based on the first image.
-                        2. Seamlessly integrate the provided furniture items.
-                        3. Style: {style_list[style_name]}.
-                        4. User's specific notes: {note if note else "Blend naturally"}.
-                        5. Add photographic modifiers (e.g., photorealistic, 8k, ray tracing, architectural photography).
-                        
-                        ONLY output the final English prompt. No explanation.
+                        2. Style: {style_list[style_name]}.
+                        3. User's specific notes: {note if note else "Blend naturally"}.
                         """
+                        
+                        # --- 核心：如果开启开关，注入极端的特征描述指令 ---
+                        if enable_ref and items_img:
+                            prompt_engineer_task += """
+                            [CRITICAL GEOMETRY CONSTRAINT]: You MUST extract the exact physical characteristics of the uploaded furniture (e.g., the precise fold patterns of the curtains, the exact color hex, the material texture, the geometric shape). Describe these features explicitly in the prompt to force the image generator to replicate the item exactly as it looks in the reference photo. Do not invent new furniture designs.
+                            """
+                        else:
+                            prompt_engineer_task += "\n4. Seamlessly integrate the provided furniture items."
+                            
+                        prompt_engineer_task += "\nONLY output the final English prompt. No explanation."
+                        
                         payload.append(prompt_engineer_task)
                         vision_response = vision_model.generate_content(payload)
                         generated_prompt = vision_response.text.strip()
 
-                    with st.spinner(f"2/2: Imagen 4.0 正在执行逼真渲染 (垫图网关已就绪)..."):
+                    with st.spinner(f"2/2: Imagen 4.0 纯文本直驱渲染中..."):
                         url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key={api_key}"
                         
-                        # 构建标准 REST 载荷
+                        # 回归最纯净的 REST 载荷，去除了不支持的 Image 实例
                         payload_data = {
                             "instances": [{"prompt": generated_prompt}],
                             "parameters": {"sampleCount": 1, "aspectRatio": final_ratio}
                         }
-                        
-                        # --- 核心逻辑：注入垫图数据 ---
-                        if enable_ref and items_img:
-                            ref_img_optimized = optimize_image_for_api(items_img[0], max_size=(1024, 1024))
-                            if ref_img_optimized:
-                                buffered = io.BytesIO()
-                                ref_img_optimized.save(buffered, format="PNG")
-                                ref_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                                # 将首张素材图作为 Image-to-Image 的参照锚点
-                                payload_data["instances"][0]["image"] = {"bytesBase64Encoded": ref_b64}
                         
                         resp = requests.post(url, json=payload_data)
                         
@@ -232,7 +230,7 @@ if check_auth():
                                 stats["total"] += 1
                                 usr = st.session_state["current_user"]
                                 stats["codes"][usr] = stats["codes"].get(usr, 0) + 1
-                                st.success("Imagen 超写实渲染成功！")
+                                st.success("Imagen 渲染成功！")
                                 st.balloons()
                             else:
                                 st.error("API 返回成功，但未包含图像数据。")
@@ -254,7 +252,7 @@ if check_auth():
                 use_container_width=True
             )
             
-            with st.expander("👀 查看底层生图核心指令 (Prompt)"):
+            with st.expander("👀 查看底层特征强控指令 (Prompt)"):
                 st.write(st.session_state["result_prompt"])
 
 # --- 版权底栏 ---
