@@ -103,18 +103,18 @@ if check_auth():
 
     with col1:
         st.subheader("🖼️ 素材上传", anchor=False)
-        room_img = st.file_uploader("1. 房间底图 (必需)", type=['png', 'jpg', 'jpeg'])
+        room_img = st.file_uploader("1.房间底图 (必需)", type=['png', 'jpg', 'jpeg'])
         if room_img:
             st.image(room_img, caption="✅ 底图已就绪", use_container_width=True)
             
-        items_img = st.file_uploader("2. 家具素材 (多选)", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True)
+        items_img = st.file_uploader("2.家具素材 (多选)", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True)
         if items_img:
             preview_cols = st.columns(4)
             for idx, f in enumerate(items_img):
                 with preview_cols[idx % 4]:
                     st.image(f, use_container_width=True)
                     
-        note = st.text_area("3. 补充描述", placeholder="例如：保留原有木地板，将上传的灰色沙发放在窗边。")
+        note = st.text_area("3.补充描述", placeholder="例如：将上传的窗帘安装到窗户上。")
 
     with col2:
         st.subheader("✨ 旗舰视觉生成", anchor=False)
