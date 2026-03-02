@@ -2,6 +2,8 @@ import streamlit as st
 import google.generativeai as genai
 from PIL import Image
 import io
+import requests
+import base64
 
 # --- 1. 商业版页面配置 ---
 st.set_page_config(
@@ -61,9 +63,8 @@ def check_auth():
         return False
     return True
 
-# --- 核心新增：安全图片预处理函数 ---
+# --- 核心：安全图片预处理函数 ---
 def optimize_image_for_api(uploaded_file, max_size=(1024, 1024)):
-    """将上传的图片转化为 RGB 模式，并等比压缩到安全尺寸，防止 API 卡死"""
     try:
         img = Image.open(uploaded_file)
         if img.mode != 'RGB':
@@ -71,7 +72,7 @@ def optimize_image_for_api(uploaded_file, max_size=(1024, 1024)):
         img.thumbnail(max_size, Image.Resampling.LANCZOS)
         return img
     except Exception as e:
-        st.error(f"图片处理失败，请更换格式：{str(e)}")
+        st.error(f"图片处理失败：{str(e)}")
         return None
 
 # --- 5. 核心逻辑入口 ---
@@ -114,7 +115,7 @@ if check_auth():
                 with preview_cols[idx % 4]:
                     st.image(f, use_container_width=True)
                     
-        note = st.text_area("3.补充描述", placeholder="例如：将上传的窗帘安装到窗户上。")
+        note = st.text_area("3.补充描述", placeholder="将上传的窗帘安装到窗户上")
 
     with col2:
         st.subheader("✨ 旗舰视觉生成", anchor=False)
@@ -123,10 +124,11 @@ if check_auth():
                 st.warning("请先上传 1. 房间底图。")
             else:
                 try:
-                    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+                    api_key = st.secrets["GEMINI_API_KEY"]
+                    genai.configure(api_key=api_key)
                     
                     # =========================================================
-                    # STEP 1: Gemini 视觉解析 (带防卡死图片压缩)
+                    # STEP 1: Gemini 视觉解析 (生成提示词)
                     # =========================================================
                     with st.spinner("1/2: Gemini 视觉解析中 (已开启提速压缩)..."):
                         available_names = [m.name for m in genai.list_models()]
@@ -135,7 +137,6 @@ if check_auth():
                         
                         vision_model = genai.GenerativeModel(selected_vision)
                         
-                        # 应用图片预压缩逻辑
                         payload = []
                         optimized_room = optimize_image_for_api(room_img)
                         if optimized_room: payload.append(optimized_room)
@@ -164,40 +165,53 @@ if check_auth():
                         print(f"✅ 生成的 Prompt: {generated_prompt}")
 
                     # =========================================================
-                    # STEP 2: Imagen 4.0 执行渲染
+                    # STEP 2: 使用 REST API 调用 Imagen 4.0 (防 SDK 报错)
                     # =========================================================
                     with st.spinner("2/2: Imagen 4.0 正在执行逼真光影渲染... (预计 10-20 秒)"):
-                        image_result = genai.generate_images(
-                            prompt=generated_prompt,
-                            number_of_images=1,
-                            model="models/imagen-4.0-generate-001",
-                            aspect_ratio=aspect_ratio_map[aspect_ratio]
-                        )
+                        url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key={api_key}"
                         
-                        if image_result and image_result.images:
-                            img_data = image_result.images[0].image.image_bytes
-                            final_image = Image.open(io.BytesIO(img_data))
-                            
-                            st.image(final_image, caption=f"✨ Imagen 4.0 渲染完成", use_container_width=True)
-                            
-                            st.download_button(
-                                label="📥 下载超清设计图", 
-                                data=img_data, 
-                                file_name="luolai_imagen4_design.png", 
-                                mime="image/png",
-                                use_container_width=True
-                            )
-                            
-                            stats["total"] += 1
-                            usr = st.session_state["current_user"]
-                            stats["codes"][usr] = stats["codes"].get(usr, 0) + 1
-                            st.success("Imagen 超写实渲染成功！")
-                            st.balloons()
-                            
-                            with st.expander("👀 查看底层生图核心指令 (Prompt)"):
-                                st.write(generated_prompt)
+                        payload_data = {
+                            "instances": [
+                                {"prompt": generated_prompt}
+                            ],
+                            "parameters": {
+                                "sampleCount": 1,
+                                "aspectRatio": aspect_ratio_map[aspect_ratio]
+                            }
+                        }
+                        
+                        # 发送原生 HTTP POST 请求
+                        resp = requests.post(url, json=payload_data)
+                        
+                        if resp.status_code == 200:
+                            result_json = resp.json()
+                            if "predictions" in result_json and len(result_json["predictions"]) > 0:
+                                b64_image = result_json["predictions"][0]["bytesBase64"]
+                                img_data = base64.b64decode(b64_image)
+                                final_image = Image.open(io.BytesIO(img_data))
+                                
+                                st.image(final_image, caption=f"✨ Imagen 4.0 渲染完成", use_container_width=True)
+                                
+                                st.download_button(
+                                    label="📥 下载超清设计图", 
+                                    data=img_data, 
+                                    file_name="luolai_imagen4_design.png", 
+                                    mime="image/png",
+                                    use_container_width=True
+                                )
+                                
+                                stats["total"] += 1
+                                usr = st.session_state["current_user"]
+                                stats["codes"][usr] = stats["codes"].get(usr, 0) + 1
+                                st.success("Imagen 超写实渲染成功！")
+                                st.balloons()
+                                
+                                with st.expander("👀 查看底层生图核心指令 (Prompt)"):
+                                    st.write(generated_prompt)
+                            else:
+                                st.error("API 返回成功，但未包含图像数据。")
                         else:
-                            st.error("未能生成图像，可能触发了安全拦截，请修改提示词。")
+                            st.error(f"Imagen API 调用失败：HTTP {resp.status_code} - {resp.text}")
                             
                 except Exception as e:
                     st.error(f"渲染链路发生异常：{str(e)}")
