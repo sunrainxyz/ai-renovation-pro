@@ -46,6 +46,13 @@ if "result_image" not in st.session_state:
 if "result_prompt" not in st.session_state:
     st.session_state["result_prompt"] = None
 
+# --- 新增核心函数 C：大图沉浸式弹窗 ---
+@st.dialog("🔍 超清细节预览", width="large")
+def show_zoomed_image(image_bytes):
+    """触发时将在屏幕中央弹出一个大屏浮层展示渲染图"""
+    final_image = Image.open(io.BytesIO(image_bytes))
+    st.image(final_image, use_container_width=True)
+
 # --- 4. 授权门禁系统 ---
 def check_auth():
     if "authenticated" not in st.session_state:
@@ -126,7 +133,6 @@ if check_auth():
         aspect_ratio = st.selectbox("输出画幅", list(aspect_ratio_map.keys()))
         
         st.divider()
-        # --- 转变策略：从 API 垫图转为大模型特征强提 ---
         enable_ref = st.toggle("🎯 启用几何特征强控 (文本级精准还原)", value=True, help="开启后，AI 将深度解析您上传家具的轮廓与折痕，以纯文本形式强制锁定 Imagen 的绘画结构。")
 
     col1, col2 = st.columns([1, 1])
@@ -181,7 +187,6 @@ if check_auth():
                             optimized_item = optimize_image_for_api(f)
                             if optimized_item: payload.append(optimized_item)
                         
-                        # 构建基础 Prompt 任务
                         prompt_engineer_task = f"""
                         You are an expert interior design prompt engineer for the Imagen 4.0 generator.
                         Analyze the room's architecture and the uploaded furniture. 
@@ -193,7 +198,6 @@ if check_auth():
                         3. User's specific notes: {note if note else "Blend naturally"}.
                         """
                         
-                        # --- 核心：如果开启开关，注入极端的特征描述指令 ---
                         if enable_ref and items_img:
                             prompt_engineer_task += """
                             [CRITICAL GEOMETRY CONSTRAINT]: You MUST extract the exact physical characteristics of the uploaded furniture (e.g., the precise fold patterns of the curtains, the exact color hex, the material texture, the geometric shape). Describe these features explicitly in the prompt to force the image generator to replicate the item exactly as it looks in the reference photo. Do not invent new furniture designs.
@@ -210,7 +214,6 @@ if check_auth():
                     with st.spinner(f"2/2: Imagen 4.0 纯文本直驱渲染中..."):
                         url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key={api_key}"
                         
-                        # 回归最纯净的 REST 载荷，去除了不支持的 Image 实例
                         payload_data = {
                             "instances": [{"prompt": generated_prompt}],
                             "parameters": {"sampleCount": 1, "aspectRatio": final_ratio}
@@ -240,17 +243,25 @@ if check_auth():
                 except Exception as e:
                     st.error(f"渲染链路发生异常：{str(e)}")
 
+        # --- 核心修改：渲染结果展示与双按钮布局 ---
         if st.session_state.get("result_image"):
             final_image = Image.open(io.BytesIO(st.session_state["result_image"]))
             st.image(final_image, caption="✨ Imagen 4.0 渲染完成", use_container_width=True)
             
-            st.download_button(
-                label="📥 下载超清设计图", 
-                data=st.session_state["result_image"], 
-                file_name="luolai_imagen4_design.png", 
-                mime="image/png",
-                use_container_width=True
-            )
+            # 使用左右两列均匀摆放“下载”和“放大”按钮
+            btn_col1, btn_col2 = st.columns(2)
+            with btn_col1:
+                st.download_button(
+                    label="📥 下载超清设计图", 
+                    data=st.session_state["result_image"], 
+                    file_name="luolai_imagen4_design.png", 
+                    mime="image/png",
+                    use_container_width=True
+                )
+            with btn_col2:
+                # 点击此按钮将触发顶部的 @st.dialog 弹窗函数
+                if st.button("🔍 放大查看细节", use_container_width=True):
+                    show_zoomed_image(st.session_state["result_image"])
             
             with st.expander("👀 查看底层特征强控指令 (Prompt)"):
                 st.write(st.session_state["result_prompt"])
