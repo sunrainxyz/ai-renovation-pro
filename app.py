@@ -18,7 +18,7 @@ st.markdown("""
     <style>
     [data-testid="stFileUploaderDropzoneInstructions"] > div > span { display: none !important; }
     [data-testid="stFileUploaderDropzoneInstructions"] > div::before {
-        content: "将房间照片或家具图片拖拽至此处";
+        content: "将图片拖拽至此处";
         font-size: 16px; font-weight: bold; color: #31333F; display: block; margin-bottom: 10px;
     }
     [data-testid="stFileUploader"] button { font-size: 0px !important; }
@@ -139,11 +139,11 @@ if check_auth():
 
     with col1:
         st.subheader("🖼️ 素材上传", anchor=False)
-        room_img = st.file_uploader("1. 房间底图 (必需)", type=['png', 'jpg', 'jpeg'])
+        room_img = st.file_uploader("1.房间底图 (必需)", type=['png', 'jpg', 'jpeg'])
         if room_img:
             st.image(room_img, caption="✅ 底图已就绪", use_container_width=True)
             
-        items_img = st.file_uploader("2. 家具素材 (多选)", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True)
+        items_img = st.file_uploader("2.家具素材 (多选)", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True)
         if items_img:
             preview_cols = st.columns(4)
             for idx, f in enumerate(items_img):
@@ -151,7 +151,7 @@ if check_auth():
                     st.image(f, use_container_width=True)
                     
         note = st.text_area(
-            "3. 补充描述", 
+            "3.补充描述", 
             value="请将我上传的窗帘素材安装并替换掉房间原有的窗帘，注意保持布料的垂坠感与室内光影的自然和谐。"
         )
 
@@ -160,7 +160,7 @@ if check_auth():
         
         if st.button("🚀 启动 Imagen 4.0 超写实渲染", type="primary", use_container_width=True):
             if not room_img:
-                st.warning("请先上传 1. 房间底图。")
+                st.warning("请先上传 1.房间底图。")
             else:
                 st.session_state["result_image"] = None
                 
